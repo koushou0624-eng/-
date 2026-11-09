@@ -1,0 +1,75 @@
+:root {
+  --bg: #f4f5f7; --panel: #fff; --ink: #1d232b; --muted: #5d6773;
+  --line: #d9dde3; --accent: #d9480f; --accent-ink: #fff; --warn: #a15c00;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; font-size: 15px; }
+.topbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: #212529; color: #fff; }
+.brand { font-weight: 700; font-size: 18px; }
+.tag { font-size: 11px; background: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+.case-switch { display: flex; gap: 6px; flex-wrap: wrap; }
+.case-switch select { max-width: 260px; padding: 6px; border-radius: 6px; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; padding: 8px 16px 0; background: var(--panel);
+  border-bottom: 1px solid var(--line); }
+.tabs button { border: 0; background: none; padding: 10px 12px; cursor: pointer; white-space: nowrap;
+  border-bottom: 3px solid transparent; color: var(--muted); font-size: 14px; }
+.tabs button.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
+main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.tab { display: none; } .tab.active { display: block; }
+.hint { color: var(--muted); margin: 0 0 12px; }
+.warn { color: var(--warn); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+fieldset { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0; }
+fieldset.wide { grid-column: 1 / -1; }
+legend { font-weight: 700; padding: 0 4px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0; }
+label.check { color: var(--ink); }
+input, select, textarea { width: 100%; padding: 8px; margin-top: 3px; border: 1px solid var(--line);
+  border-radius: 6px; font: inherit; color: var(--ink); background: #fff; }
+input[type=checkbox] { width: auto; margin-right: 6px; }
+.btn { display: inline-block; background: var(--accent); color: var(--accent-ink); border: 0; padding: 8px 14px;
+  border-radius: 6px; cursor: pointer; font: inherit; font-size: 14px; }
+.btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+
+/* 期限 */
+.deadline { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--line);
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+.deadline.need { border-left-color: var(--accent); }
+.deadline.ok { border-left-color: #2f9e44; }
+.deadline .when { font-weight: 700; }
+.deadline .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #eee; margin-left: 6px; }
+.badge.late { background: #ffe3e3; color: #c92a2a; }
+.badge.soon { background: #fff3bf; color: #8a6100; }
+
+/* 書類 */
+.paper { background: #fff; color: #000; max-width: 210mm; min-height: 270mm; margin: 0 auto; padding: 18mm 16mm;
+  box-shadow: 0 1px 6px rgba(0,0,0,.12); font-family: "Hiragino Mincho ProN", "Noto Serif JP", "Yu Mincho", serif; }
+.paper h1 { text-align: center; font-size: 24px; letter-spacing: .4em; margin: 0 0 18px; }
+.paper .right { text-align: right; } .paper .small { font-size: 12px; }
+.paper table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+.paper th, .paper td { border: 1px solid #333; padding: 5px 7px; vertical-align: top; }
+.paper th { background: #f1f1f1; font-weight: normal; text-align: left; white-space: nowrap; }
+.paper td.num { text-align: right; white-space: nowrap; }
+.paper .total { font-size: 20px; border-bottom: 2px solid #000; display: inline-block; padding: 4px 12px; margin: 8px 0; }
+.paper .two { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.paper .blank { color: #999; }
+.paper p { line-height: 1.9; }
+
+@media (max-width: 600px) {
+  main { padding: 12px 16px; }
+  .paper { padding: 14px; min-height: 0; }
+  .paper h1 { font-size: 20px; letter-spacing: .2em; }
+}
+@media print {
+  body { background: #fff; }
+  .no-print, .toolbar, .topbar, .tabs { display: none !important; }
+  main { padding: 0; max-width: none; }
+  .tab { display: none !important; }
+  .tab.active { display: block !important; }
+  .paper { box-shadow: none; margin: 0; max-width: none; min-height: 0; padding: 0; }
+  @page { size: A4; margin: 15mm; }
+}

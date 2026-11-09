@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カイタイ事務 — 解体工事の見積・届出 自動作成</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar no-print">
+  <div class="brand">カイタイ事務 <span class="tag">試作版</span></div>
+  <div class="case-switch">
+    <select id="caseSelect" aria-label="案件を選択"></select>
+    <button id="newCase" class="btn">＋ 新規案件</button>
+    <button id="deleteCase" class="btn ghost">削除</button>
+  </div>
+</header>
+
+<nav class="tabs no-print" id="tabs">
+  <button data-tab="input" class="active">① 案件入力</button>
+  <button data-tab="schedule">② 期限・チェック</button>
+  <button data-tab="estimate">③ 見積書</button>
+  <button data-tab="recycle">④ リサイクル法 届出下書き</button>
+  <button data-tab="greeting">⑤ 近隣挨拶文</button>
+  <button data-tab="certificate">⑥ 取毀証明書</button>
+  <button data-tab="settings">⚙ 会社・単価設定</button>
+</nav>
+
+<main>
+  <!-- ① 案件入力 -->
+  <section id="tab-input" class="tab active no-print">
+    <p class="hint">ここに入力するだけで、ほかのタブの書類が全部自動で作られます（入力内容はこの端末のブラウザに自動保存）。</p>
+    <form id="caseForm" class="grid">
+      <fieldset>
+        <legend>施主（発注者）</legend>
+        <label>氏名・社名<input name="clientName" placeholder="山田 太郎"></label>
+        <label>住所<input name="clientAddress" placeholder="東京都〇〇区〇〇1-2-3"></label>
+        <label>電話<input name="clientTel" placeholder="090-0000-0000"></label>
+      </fieldset>
+      <fieldset>
+        <legend>解体する建物</legend>
+        <label>工事場所（所在地）<input name="siteAddress" placeholder="東京都〇〇区〇〇4-5-6"></label>
+        <label>構造
+          <select name="structure">
+            <option value="wood">木造</option>
+            <option value="steel">鉄骨造</option>
+            <option value="rc">RC造（鉄筋コンクリート）</option>
+          </select>
+        </label>
+        <label>階数<input name="floors" type="number" min="1" value="2"></label>
+        <label>延床面積（㎡）<input name="floorArea" type="number" min="0" step="0.01" placeholder="99.17"></label>
+        <label>用途<input name="use" value="専用住宅"></label>
+        <label>築年（任意）<input name="builtYear" placeholder="1985"></label>
+      </fieldset>
+      <fieldset>
+        <legend>現場条件</legend>
+        <label class="check"><input type="checkbox" name="noHeavy"> 重機が入れない（手壊し中心）</label>
+        <label class="check"><input type="checkbox" name="narrowRoad"> 前面道路が狭い（小型車で搬出）</label>
+        <label>残置物（㎥）<input name="debrisM3" type="number" min="0" step="0.5" value="0"></label>
+        <label>ブロック塀（m）<input name="blockM" type="number" min="0" step="0.5" value="0"></label>
+        <label>土間コンクリート（㎡）<input name="concreteM2" type="number" min="0" step="0.5" value="0"></label>
+        <label>庭木（本）<input name="trees" type="number" min="0" value="0"></label>
+      </fieldset>
+      <fieldset>
+        <legend>アスベスト</legend>
+        <label>事前調査の結果
+          <select name="asbestos">
+            <option value="none">含有なし</option>
+            <option value="level3">あり（レベル3：成形板など）</option>
+            <option value="level12">あり（レベル1・2：吹付け・保温材など）</option>
+            <option value="unknown">未調査</option>
+          </select>
+        </label>
+        <label>除去する面積（㎡）<input name="asbestosM2" type="number" min="0" step="0.5" value="0"></label>
+      </fieldset>
+      <fieldset>
+        <legend>工期</legend>
+        <label>着工予定日<input name="startDate" type="date"></label>
+        <label>完了予定日<input name="endDate" type="date"></label>
+        <label>見積番号<input name="estimateNo" placeholder="自動"></label>
+      </fieldset>
+      <fieldset>
+        <legend>廃棄物の量の見込み（届出用・トン）</legend>
+        <label>コンクリート塊<input name="wConcrete" type="number" min="0" step="0.1" value="0"></label>
+        <label>木材<input name="wWood" type="number" min="0" step="0.1" value="0"></label>
+        <label>アスファルト・コンクリート塊<input name="wAsphalt" type="number" min="0" step="0.1" value="0"></label>
+        <button type="button" id="autoWaste" class="btn ghost">目安を自動入力</button>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>メモ（見積書の備考に表示）</legend>
+        <textarea name="notes" rows="3" placeholder="例：地中埋設物が出た場合は別途お見積りとなります。"></textarea>
+      </fieldset>
+    </form>
+  </section>
+
+  <!-- ② 期限 -->
+  <section id="tab-schedule" class="tab no-print">
+    <div id="scheduleOut"></div>
+  </section>
+
+  <!-- 書類系 -->
+  <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="estimateOut"></div></section>
+  <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
+  <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="greetingOut"></div></section>
+  <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab no-print">
+    <form id="settingsForm" class="grid">
+      <fieldset>
+        <legend>自社情報</legend>
+        <label>会社名<input name="name" placeholder="株式会社〇〇解体"></label>
+        <label>代表者<input name="rep" placeholder="代表取締役 〇〇 〇〇"></label>
+        <label>住所<input name="address"></label>
+        <label>電話<input name="tel"></label>
+        <label>許可・登録番号<input name="permit" placeholder="東京都知事 解体工事業登録（〇）第〇〇号"></label>
+        <label>見積有効期限（日）<input name="validDays" type="number" value="30"></label>
+      </fieldset>
+      <fieldset>
+        <legend>単価（税抜）</legend>
+        <label>木造（円/坪）<input name="pWood" type="number"></label>
+        <label>鉄骨造（円/坪）<input name="pSteel" type="number"></label>
+        <label>RC造（円/坪）<input name="pRc" type="number"></label>
+        <label>手壊し割増（％）<input name="pManual" type="number"></label>
+        <label>狭小道路割増（％）<input name="pNarrow" type="number"></label>
+        <label>残置物（円/㎥）<input name="pDebris" type="number"></label>
+        <label>ブロック塀（円/m）<input name="pBlock" type="number"></label>
+        <label>土間コンクリート（円/㎡）<input name="pConcrete" type="number"></label>
+        <label>庭木（円/本）<input name="pTree" type="number"></label>
+        <label>アスベスト レベル3（円/㎡）<input name="pAsb3" type="number"></label>
+        <label>アスベスト レベル1・2（円/㎡）<input name="pAsb12" type="number"></label>
+        <label>養生・足場（円/㎡・延床）<input name="pScaffold" type="number"></label>
+        <label>諸経費（％）<input name="pOverhead" type="number"></label>
+      </fieldset>
+    </form>
+    <p class="hint">単価は初期値として一般的な相場の目安を入れています。必ず自社の単価に書き換えてください。</p>
+    <p><button id="exportBtn" class="btn ghost">データを書き出し（バックアップ）</button>
+       <label class="btn ghost">データを読み込み<input id="importFile" type="file" accept="application/json" hidden></label></p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
