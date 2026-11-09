@@ -620,12 +620,12 @@
   const mLabel = (d, k, mode) => (mode === 'calendar' ? `${d.getMonth() + 1}月` : `${k + 1}か月目`);
 
   // 区切りごとに「使った日数が決めた日数を超えたら月極、超えなければ日割り」で計算
-  function leaseCalc(l) {
+  function leaseCalc(l, endOverride) {
     const daily = num(l.daily), monthly = num(l.monthly), th = Math.max(1, num(l.th) || 1);
     const mode = LEASE_MODES[state.settings.leaseMode] ? state.settings.leaseMode : 'calendar';
     const extra = num(l.transport) + num(l.other);
     if (!l.start) return { days: 0, cost: extra, rent: 0, parts: [], state: 'none' };
-    const s0 = new Date(l.start + 'T00:00:00'), e0 = new Date((l.end || todayIso()) + 'T00:00:00');
+    const s0 = new Date(l.start + 'T00:00:00'), e0 = new Date((endOverride || l.end || todayIso()) + 'T00:00:00');
     const days = dayCount(s0, e0);
     if (days <= 0) return { days: 0, cost: extra, rent: 0, parts: [], state: 'bad' };
     const segs = [];
@@ -635,14 +635,14 @@
       const to = natEnd < e0 ? natEnd : e0;
       const d = dayCount(cur, to);
       const len = dayCount(cur, natEnd); // その区切りで借りられる最大の日数
-      segs.push({ from: new Date(cur), to, natEnd, d, len, monthly: d > th, label: mLabel(cur, k, mode) });
+      segs.push({ from: new Date(cur), to, natEnd, d, len, monthly: d > th, label: mLabel(cur, k, mode), amount: d > th ? monthly : d * daily, ym: isoOf(cur).slice(0, 7) });
       cur = new Date(natEnd); cur.setDate(cur.getDate() + 1); k++;
     }
     const rent = segs.reduce((a, g) => a + (g.monthly ? monthly : g.d * daily), 0);
     const parts = segs.map((g) => (g.monthly ? `${g.label} ${g.d}日（${th}日超え → 月極）¥${yen(monthly)}` : `${g.label} 日割り ${g.d}日 × ¥${yen(daily)}`));
     const last = segs[segs.length - 1];
     const nMonthly = segs.filter((g) => g.monthly).length;
-    const res = { days, rent, cost: rent + extra, parts, full: nMonthly, rem: last.d, th, ongoing: !l.end, state: 'ok', mode,
+    const res = { days, rent, cost: rent + extra, parts, segs, full: nMonthly, rem: last.d, th, ongoing: !l.end && !endOverride, state: 'ok', mode,
       summary: nMonthly === segs.length ? '月極' : nMonthly ? `月極${nMonthly}・日割り${segs.length - nMonthly}` : '日割り' };
     if (!last.monthly) {
       if (last.len > th) {
@@ -660,13 +660,20 @@
       res.paidUntil = last.natEnd; // 月極で追加料金なしの最終日
       if (res.ongoing) res.state = 'monthly';
     }
+    if (res.ongoing && segs.length > 1 && last.d <= 3) res.newMonth = { prev: segs[segs.length - 2], cur: last };
     return res;
+  }
+  // 月ごとの請求額（回送費・その他は借りた月に計上）
+  function leaseByMonth(l) {
+    const r = leaseCalc(l); const out = {};
+    (r.segs || []).forEach((g, i) => { out[g.ym] = (out[g.ym] || 0) + g.amount + (i === 0 ? num(l.transport) + num(l.other) : 0); });
+    return out;
   }
   function leaseSummary(c) {
     const ls = leasesOf(c);
     return { total: Math.round(ls.reduce((a, l) => a + leaseCalc(l).cost, 0)), count: ls.length };
   }
-  function leaseCalcHtml(l) {
+  function leaseCalcHtml(l, c = cur()) {
     const r = leaseCalc(l);
     if (!l.start) return '<span class="chip">借りた日を入れると金額を計算します</span>';
     if (r.state === 'bad') return '<span class="chip late">返した日が借りた日より前です</span>';
@@ -678,16 +685,43 @@
     return `
       <div class="lsum"><span>使用 <b>${r.days}日</b>${r.ongoing ? '（借りている途中・今日まで）' : ''}</span><span>リース代 <b>¥${yen(r.cost)}</b></span><span class="sub">ルール：その月${num(l.th)}日までは日割り、${num(l.th) + 1}日目から月極</span></div>
       <div class="lbar"><div style="width:${r.rem && r.rem <= num(l.th) ? pct : 100}%" class="${r.paidUntil ? 'm' : ''}"></div></div>
-      <div class="sub">${r.parts.join(' ＋ ')}${num(l.transport) ? ` ＋ 回送費 ¥${yen(l.transport)}` : ''}${num(l.other) ? ` ＋ その他 ¥${yen(l.other)}` : ''}</div>
       <div>${note}</div>
-      ${r.tip ? `<div class="sub tipline">💡 ${r.tip}</div>` : ''}`;
+      ${r.newMonth ? `<div class="sub monthline">📅 月が変わったので、${r.newMonth.cur.label}は日割りに戻りました（${r.newMonth.cur.label} ${r.newMonth.cur.d}日目）。${r.newMonth.prev.label}分は¥${yen(r.newMonth.prev.amount)}で締め。</div>` : ''}
+      ${r.tip ? `<div class="sub tipline">💡 ${r.tip}</div>` : ''}
+      ${leaseMonthsHtml(l, r)}
+      ${leaseForecastHtml(l, r, c)}`;
+  }
+  // 月ごと（リース会社の締めごと）の請求額
+  function leaseMonthsHtml(l, r) {
+    const now = today();
+    const rows = r.segs.map((g, i) => {
+      const status = !r.ongoing && i === r.segs.length - 1 ? '返却' : g.natEnd < now ? '締め済み' : '今月・途中';
+      return `<tr><td>${g.label}分（${g.from.getMonth() + 1}/${g.from.getDate()}〜${g.to.getMonth() + 1}/${g.to.getDate()}）</td><td class="num">${g.d}日</td><td>${g.monthly ? '月極' : '日割り'}</td><td class="num">¥${yen(g.amount)}</td><td>${status}</td></tr>`;
+    }).join('');
+    const ex = num(l.transport) + num(l.other);
+    return `<div class="table-wrap"><table class="cost wide mini"><thead><tr><th>請求（締めごと）</th><th class="num">日数</th><th>計算</th><th class="num">金額</th><th>状態</th></tr></thead><tbody>${rows}
+      ${ex ? `<tr><td>回送費・その他</td><td></td><td></td><td class="num">¥${yen(ex)}</td><td></td></tr>` : ''}</tbody>
+      <tfoot><tr><th colspan="3">この現場の合計（${r.ongoing ? '今日まで' : '返却まで'}）</th><td class="num"><b>¥${yen(r.cost)}</b></td><td></td></tr></tfoot></table></div>`;
+  }
+  // 現場の完了予定日まで借り続けた場合の見込み
+  function leaseForecastHtml(l, r, c) {
+    if (!r.ongoing || !c.endDate || c.endDate <= todayIso()) return '';
+    const f = leaseCalc(l, c.endDate);
+    const future = f.segs.filter((g) => g.to > today());
+    const lastSeg = f.segs[f.segs.length - 1];
+    let advice = '';
+    if (!lastSeg.monthly && lastSeg.len > num(l.th)) advice = `最後の${lastSeg.label}は${lastSeg.d}日なので日割り（${num(l.th)}日以内に返せば日割りのまま）。`;
+    else if (lastSeg.monthly) advice = `最後の${lastSeg.label}は${lastSeg.d}日使うので月極になります。`;
+    return `<div class="forecast">🔮 <b>完了予定日（${fmtIso(c.endDate)}）まで借りた場合：合計 ¥${yen(f.cost)}</b>（今日から あと¥${yen(f.cost - r.cost)}）
+      <div class="sub">${future.map((g) => `${g.label}：${g.d}日 ${g.monthly ? '月極' : '日割り'} ¥${yen(g.amount)}`).join('　')}</div>
+      ${advice ? `<div class="sub">${advice}</div>` : ''}</div>`;
   }
   function renderLeaseList(c) {
     const ls = leasesOf(c);
     $('#leaseList').innerHTML = ls.length ? ls.map((l) => `
       <div class="mcard" data-lid="${l.id}">
         <div class="mhead"><b>${esc(l.name || '（名前なし）')}</b><span class="flex1"></span><button class="btn ghost small" data-ldel="${l.id}">削除</button></div>
-        <div class="lcalc" id="lcalc-${l.id}">${leaseCalcHtml(l)}</div>
+        <div class="lcalc" id="lcalc-${l.id}">${leaseCalcHtml(l, c)}</div>
         <div class="mgrid">
           <label>機械の名前<input data-lf="name" value="${esc(l.name)}"></label>
           <label>リース会社<input data-lf="company" value="${esc(l.company)}" placeholder="〇〇リース"></label>
@@ -723,6 +757,7 @@
       else if (r.state === 'soon') items.push({ o: 0, h: `<li>${who} — <b>あと${r.toSwitch}日で月極に切り替わります。</b>返す予定なら${fmtDate(r.lastDaily)}までに返せば日割り（今の時点で¥${yen(r.rent)}）で済みます。</li>` });
       else if (r.state === 'monthly') items.push({ o: 1, h: `<li>${who} — 月極に切り替わりました（使用${r.days}日）。${fmtDate(r.paidUntil)}までは追加料金なしで使えます。</li>` });
       else if (r.tip && r.ongoing) items.push({ o: 2, h: `<li>${who} — ${r.tip}</li>` });
+      if (r.newMonth) items.push({ o: 3, h: `<li>${who} — 月が変わり、${r.newMonth.cur.label}は日割りに戻りました（${r.newMonth.cur.d}日目）。現場は続いているので、${r.newMonth.cur.label}も使った日数が${num(l.th)}日を超えると（${num(l.th) + 1}日目から）月極になります。</li>` });
     }));
     items.sort((a, b) => a.o - b.o);
     const soon = items.filter((x) => x.o === 0).length;
@@ -757,27 +792,28 @@
   function renderExpenseMonthly() {
     const ym = (iso) => String(iso || '').slice(0, 7);
     const withData = new Set();
-    state.cases.forEach((c) => { expensesOf(c).forEach((x) => withData.add(ym(x.date))); manifestsOf(c).forEach((m) => m.date && num(m.qty) && withData.add(ym(m.date))); });
+    state.cases.forEach((c) => { expensesOf(c).forEach((x) => withData.add(ym(x.date))); manifestsOf(c).forEach((m) => m.date && num(m.qty) && withData.add(ym(m.date))); leasesOf(c).forEach((l) => Object.keys(leaseByMonth(l)).forEach((k) => withData.add(k))); });
     const sorted = [...new Set([...withData, ym(todayIso())])].filter(Boolean).sort().reverse();
     const latest = [...withData].filter(Boolean).sort().reverse()[0] || ym(todayIso());
     const mon = expMonth && sorted.includes(expMonth) ? expMonth : latest;
-    const tot = { disp: 0 }; EXPENSE_CATS.forEach((k) => { tot[k] = 0; });
+    const tot = { disp: 0, lease: 0 }; EXPENSE_CATS.forEach((k) => { tot[k] = 0; });
     const rows = state.cases.map((c) => {
-      const r = { disp: manifestsOf(c).filter((m) => ym(m.date) === mon).reduce((a, m) => a + dispOf(m), 0) };
+      const r = { disp: manifestsOf(c).filter((m) => ym(m.date) === mon).reduce((a, m) => a + dispOf(m), 0),
+        lease: leasesOf(c).reduce((a, l) => a + (leaseByMonth(l)[mon] || 0), 0) };
       EXPENSE_CATS.forEach((k) => { r[k] = expensesOf(c).filter((x) => ym(x.date) === mon && x.cat === k).reduce((a, x) => a + num(x.amount), 0); });
-      const all = r.disp + EXPENSE_CATS.reduce((a, k) => a + r[k], 0);
+      const all = r.disp + r.lease + EXPENSE_CATS.reduce((a, k) => a + r[k], 0);
       if (!all) return '';
-      tot.disp += r.disp; EXPENSE_CATS.forEach((k) => { tot[k] += r[k]; });
-      return `<tr><td>${esc(caseName(c))}</td><td class="num">¥${yen(r.disp)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(r[k])}</td>`).join('')}<td class="num"><b>¥${yen(all)}</b></td></tr>`;
+      tot.disp += r.disp; tot.lease += r.lease; EXPENSE_CATS.forEach((k) => { tot[k] += r[k]; });
+      return `<tr><td>${esc(caseName(c))}</td><td class="num">¥${yen(r.disp)}</td><td class="num">¥${yen(r.lease)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(r[k])}</td>`).join('')}<td class="num"><b>¥${yen(all)}</b></td></tr>`;
     }).join('');
-    const grand = tot.disp + EXPENSE_CATS.reduce((a, k) => a + tot[k], 0);
+    const grand = tot.disp + tot.lease + EXPENSE_CATS.reduce((a, k) => a + tot[k], 0);
     $('#expenseMonthly').innerHTML = `
       <h2>月ごとのまとめ（全案件）</h2>
       <label class="inline" for="expMonth">月 <select id="expMonth">${sorted.map((m) => `<option value="${m}" ${m === mon ? 'selected' : ''}>${m.replace('-', '年')}月</option>`).join('')}</select></label>
-      <div class="table-wrap"><table class="cost wide"><thead><tr><th>現場</th><th class="num">処分代</th>${EXPENSE_CATS.map((k) => `<th class="num">${k}</th>`).join('')}<th class="num">合計</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${EXPENSE_CATS.length + 3}" class="empty">この月の処分代・経費はありません</td></tr>`}</tbody>
-        <tfoot><tr><th>合計</th><td class="num">¥${yen(tot.disp)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(tot[k])}</td>`).join('')}<td class="num"><b>¥${yen(grand)}</b></td></tr></tfoot></table></div>
-      <p class="hint">処分代はマニフェストの交付日（搬出日）の月で数えています。</p>`;
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>現場</th><th class="num">処分代</th><th class="num">リース</th>${EXPENSE_CATS.map((k) => `<th class="num">${k}</th>`).join('')}<th class="num">合計</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${EXPENSE_CATS.length + 4}" class="empty">この月の処分代・リース・経費はありません</td></tr>`}</tbody>
+        <tfoot><tr><th>合計</th><td class="num">¥${yen(tot.disp)}</td><td class="num">¥${yen(tot.lease)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(tot[k])}</td>`).join('')}<td class="num"><b>¥${yen(grand)}</b></td></tr></tfoot></table></div>
+      <p class="hint">処分代はマニフェストの交付日（搬出日）の月、リース代は締めごとの請求の月（回送費は借りた月）で数えています。借りている途中の機械は今日までの金額です。</p>`;
   }
 
   function newManifest(c, extra = {}) {
@@ -928,7 +964,7 @@
     l[el.dataset.lf] = el.value; save();
     const box = $('#lcalc-' + l.id); if (box) box.innerHTML = leaseCalcHtml(l);
     if (el.dataset.lf === 'name') card.querySelector('.mhead b').textContent = l.name || '（名前なし）';
-    renderLeaseAlerts(); renderLeaseTotal(cur()); renderProfit(cur(), state.settings);
+    renderLeaseAlerts(); renderLeaseTotal(cur()); renderProfit(cur(), state.settings); renderExpenseMonthly();
   });
   const leaseDelArmed = {};
   $('#leaseList').addEventListener('click', (e) => {

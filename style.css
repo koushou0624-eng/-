@@ -185,3 +185,7 @@ td.cheap { color: #1b6e2a; font-weight: 700; background: #d3f9d8; }
 fieldset { min-width: 0; }
 .tipline { color: #1b6e2a; }
 .thlabel { color: var(--ink); font-weight: 700; }
+table.cost.mini { font-size: 13px; background: var(--panel); }
+table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
+.forecast { background: var(--panel); border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
+.monthline { color: var(--accent); }
