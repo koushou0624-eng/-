@@ -676,7 +676,7 @@
     else if (r.paidUntil) note = `<span class="chip done">月極に切替済み</span> <span class="sub">${r.ongoing ? `${fmtDate(r.paidUntil)}までは追加料金なし` : '月極で計算'}</span>`;
     else if (r.shortSeg) note = `<span class="chip">日割り</span> <span class="sub">${fmtDate(r.shortSeg.natEnd)}までは${r.shortSeg.len}日しかないため、この区切りは月極になりません</span>`;
     return `
-      <div class="lsum"><span>使用 <b>${r.days}日</b>${r.ongoing ? '（借りている途中・今日まで）' : ''}</span><span>リース代 <b>¥${yen(r.cost)}</b></span></div>
+      <div class="lsum"><span>使用 <b>${r.days}日</b>${r.ongoing ? '（借りている途中・今日まで）' : ''}</span><span>リース代 <b>¥${yen(r.cost)}</b></span><span class="sub">ルール：その月${num(l.th)}日までは日割り、${num(l.th) + 1}日目から月極</span></div>
       <div class="lbar"><div style="width:${r.rem && r.rem <= num(l.th) ? pct : 100}%" class="${r.paidUntil ? 'm' : ''}"></div></div>
       <div class="sub">${r.parts.join(' ＋ ')}${num(l.transport) ? ` ＋ 回送費 ¥${yen(l.transport)}` : ''}${num(l.other) ? ` ＋ その他 ¥${yen(l.other)}` : ''}</div>
       <div>${note}</div>
@@ -695,13 +695,13 @@
           <label>返した日（借りている途中は空欄）<input data-lf="end" type="date" value="${esc(l.end)}"></label>
           <label>日額（円）<input data-lf="daily" type="number" min="0" value="${esc(l.daily)}"></label>
           <label>月極料金（円）<input data-lf="monthly" type="number" min="0" value="${esc(l.monthly)}"></label>
-          <label>この日数を超えたら月極<input data-lf="th" type="number" min="1" value="${esc(l.th)}"></label>
+          <label class="thlabel">月極に切り替わる日数（この日数を超えたら月極）<input data-lf="th" type="number" min="1" value="${esc(l.th)}"></label>
           <label>回送費（円・往復）<input data-lf="transport" type="number" min="0" value="${esc(l.transport)}"></label>
           <label>その他（補償料など）<input data-lf="other" type="number" min="0" value="${esc(l.other ?? '')}"></label>
         </div>
       </div>`).join('') : '<p class="empty">この案件で借りた機械はまだありません。上の「借りた機械を追加」から選んでください。</p>';
     const ps = state.settings.leasePresets || [];
-    $('#leasePreset').innerHTML = ps.map((p, i) => `<option value="${i}">${esc(p.name)}（日額¥${yen(p.daily)}／月極¥${yen(p.monthly)}／${num(p.th)}日超えで月極）</option>`).join('') + '<option value="custom">その他（自分で入力）</option>';
+    $('#leasePreset').innerHTML = ps.map((p, i) => `<option value="${i}">${esc(p.name)}（日額¥${yen(p.daily)}／月極¥${yen(p.monthly)}／${num(p.th) + 1}日目から月極）</option>`).join('') + '<option value="custom">その他（自分で入力）</option>';
   }
   function renderLeaseTotal(c) {
     const ls = leasesOf(c);
@@ -990,7 +990,7 @@
         <label class="pname">機械の名前<input data-pf="name" value="${esc(p.name)}"></label>
         <label>日額<input data-pf="daily" type="number" min="0" value="${esc(p.daily)}"></label>
         <label>月極<input data-pf="monthly" type="number" min="0" value="${esc(p.monthly)}"></label>
-        <label>超えたら月極（日）<input data-pf="th" type="number" min="1" value="${esc(p.th)}"></label>
+        <label>月極に切り替わる日数<input data-pf="th" type="number" min="1" value="${esc(p.th)}"></label>
         <label>回送費（往復）<input data-pf="transport" type="number" min="0" value="${esc(p.transport)}"></label>
         <button type="button" class="btn ghost small" data-pdel="${i}">削除</button>
       </div>`).join('') || '<p class="empty">登録された機械はありません</p>';

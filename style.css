@@ -184,3 +184,4 @@ td.cheap { color: #1b6e2a; font-weight: 700; background: #d3f9d8; }
 .best { color: #2f9e44; }
 fieldset { min-width: 0; }
 .tipline { color: #1b6e2a; }
+.thlabel { color: var(--ink); font-weight: 700; }
