@@ -145,6 +145,7 @@
       <div class="rare-row"><select id="leasePreset"></select><button class="btn" id="addLease">＋ 追加</button></div>
     </div>
     <div id="leaseList"></div>
+    <datalist id="companyList"></datalist>
     <div id="leaseTotal"></div>
   </section>
   <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
@@ -190,11 +191,15 @@
         <p class="hint">ここに登録した機械は、リースタブで選ぶだけで単価が入ります。その月（区切り）に使った日数が「超えたら月極」の日数を超えると、その月は月極料金になります。</p>
         <label>月極の区切り方
           <select name="leaseMode">
-            <option value="calendar">暦の月ごと（毎月1日〜末日）</option>
+            <option value="calendar">リース会社の締め日ごと（登録のない会社は末日締め）</option>
             <option value="anniv">借りた日から1か月ごと</option>
             <option value="days30">借りた日から30日ごと</option>
           </select>
         </label>
+        <div class="always-title">リース会社と締め日</div>
+        <div id="leaseCompanies"></div>
+        <button type="button" class="btn ghost small" id="addCompany">＋ リース会社を追加</button>
+        <div class="always-title" style="margin-top:12px">よく借りる機械</div>
         <div id="leasePresets"></div>
         <button type="button" class="btn ghost small" id="addPreset">＋ 機械を追加</button>
       </fieldset>

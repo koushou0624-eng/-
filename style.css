@@ -189,3 +189,6 @@ table.cost.mini { font-size: 13px; background: var(--panel); }
 table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
 .forecast { background: var(--panel); border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; font-size: 14px; }
 .monthline { color: var(--accent); }
+.company { display: grid; grid-template-columns: 2fr 1fr auto; gap: 0 8px; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 4px; }
+.company .btn { margin-bottom: 8px; }
+@media (max-width: 600px) { .company { grid-template-columns: 1fr auto; } .company .pname { grid-column: 1 / -1; } }
