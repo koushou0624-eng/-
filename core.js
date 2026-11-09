@@ -220,7 +220,10 @@
     let type = null;
     for (const [word, id] of WASTE_WORDS) { const i = t.indexOf(word); if (i >= 0) { type = id; t = t.slice(0, i) + ' ' + t.slice(i + word.length); break; } }
     if (qty == null) { const bare = t.match(/(?:^|\s)(\d+(?:\.\d+)?)(?=\s|$)/); if (bare) { qty = num(bare[1]); t = t.replace(bare[0], ' '); } } // 単位なしの数字はトンとみなす
-    const tokens = t.split(' ').map((x) => x.trim()).filter((x) => x.length >= 2 || /[\u4e00-\u9fff]/.test(x)); // 「堺」など漢字1文字の地名も使う
+    // 空白なしで続けて書かれても分けられるよう、カタカナ・英字と漢字・ひらがなの境目でも区切る（「ヒラヤマ住吉区」→「ヒラヤマ」「住吉区」）
+    const split = (x) => x.match(/[\u30a0-\u30ffa-z0-9ー]+|[^\u30a0-\u30ffa-z0-9ー]+/g) || [];
+    const tokens = t.split(' ').flatMap((x) => { const parts = split(x.trim()); return parts.length > 1 ? [x.trim()].concat(parts) : parts; })
+      .filter((x) => x.length >= 2 || /[\u4e00-\u9fff]/.test(x)); // 「堺」など漢字1文字の地名も使う
 
     // 処分場
     const sites = siteCandidates(state);
@@ -251,7 +254,21 @@
     }
     // 現場の照合に使わなかった言葉は、未登録の処分場の名前として使う
     if (!disposer) {
-      const rest = tokens.filter((tok) => !used.has(tok) && !(target && Math.max(overlap(squash(tok), squash(target.siteAddress)), overlap(squash(tok), squash(target.clientName))) > 0));
+      // 空白で区切られた言葉のうち、現場の地名・施主名と重なる部分を取り除いた残りを処分場名にする（「タナカ産業伏見」→「タナカ産業」）
+      const strip = (tok) => {
+        if (!target) return tok;
+        let out = tok;
+        [target.siteAddress, target.clientName].forEach((f) => {
+          const k = kana(f || '').replace(/\s/g, '');
+          for (let len = Math.min(out.length, k.length); len >= 2; len--) {
+            let hit = '';
+            for (let i = 0; i + len <= out.length; i++) { const sub = out.slice(i, i + len); if (k.includes(sub)) { hit = sub; break; } }
+            if (hit) { out = out.replace(hit, ''); break; }
+          }
+        });
+        return out.trim();
+      };
+      const rest = t.split(' ').map((x) => x.trim()).filter(Boolean).map(strip).filter((x) => x.length >= 2);
       disposer = rest.length ? rest[0] : ((state.settings || {}).defDisposer || '');
     }
 
