@@ -110,12 +110,12 @@
   <section id="tab-manifest" class="tab no-print">
     <div id="manifestAlerts"></div>
     <h2>この案件のマニフェスト</h2>
-    <p class="hint">搬出1回（1枚）ごとに登録します。返送された票の日付を入れると「済」になります。</p>
-    <div class="toolbar">
-      <button class="btn" id="addManifest">＋ 1枚追加</button>
-      <button class="btn ghost" id="bulkManifest">見込みから品目ごとに作成</button>
-    </div>
+    <p class="hint">ゴミの種類ごとに分かれています。搬出1回（1枚）ごとに「＋ 1枚追加」で登録し、返送された票の日付を入れると「済」になります。</p>
     <div id="manifestList"></div>
+    <div class="rare">
+      <label for="rareType">めったに出ないゴミを追加</label>
+      <div class="rare-row"><select id="rareType"></select><button class="btn ghost" id="addRare">＋ 追加</button></div>
+    </div>
     <datalist id="carrierList"></datalist><datalist id="disposerList"></datalist>
     <div id="manifestCompare"></div>
     <div id="manifestReport"></div>
@@ -156,6 +156,7 @@
         <legend>マニフェスト</legend>
         <label>いつもの収集運搬業者<input name="defCarrier" placeholder="〇〇運輸（許可番号 〇〇〇）"></label>
         <label>いつもの処分業者<input name="defDisposer" placeholder="〇〇リサイクルセンター"></label>
+        <div class="always"><div class="always-title">いつも出るゴミ（どの案件にも最初から欄を表示）</div><div id="alwaysTypes"></div></div>
       </fieldset>
       <fieldset>
         <legend>原価（利益チェック用）</legend>

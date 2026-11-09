@@ -17,6 +17,7 @@
     cDispConcrete: 3000, cDispWood: 12000, cDispMixed: 25000, cDispDebris: 8000,
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
     defCarrier: '', defDisposer: '',
+    alwaysTypes: ['concrete', 'wood', 'mixed', 'glass', 'gypsum'],
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
   const WASTE_TYPES = [
@@ -26,7 +27,7 @@
     { id: 'mixed', name: '混合廃棄物（安定型・管理型混合）', unit: 't' },
     { id: 'plastic', name: '廃プラスチック類', unit: 't' },
     { id: 'metal', name: '金属くず', unit: 't' },
-    { id: 'glass', name: 'ガラスくず・陶磁器くず', unit: 't' },
+    { id: 'glass', name: 'ガラスくず・陶磁器くず（瓦など）', unit: 't' },
     { id: 'gypsum', name: '廃石膏ボード', unit: 't' },
     { id: 'asb', name: '石綿含有産業廃棄物', unit: '㎥' },
     { id: 'asbsp', name: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
@@ -371,18 +372,29 @@
     return ch.map((x) => `<span class="chip ${x.state}" title="${x.due ? '期限 ' + fmtDate(x.due) : ''}">${x.text}</span>`).join('');
   };
 
-  function renderManifestList(c) {
-    const ms = manifestsOf(c);
-    const opt = (sel) => WASTE_TYPES.map((w) => `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${w.name}</option>`).join('');
-    $('#manifestList').innerHTML = ms.length ? ms.map((m, i) => `
+  // この案件で表示するゴミの種類：いつも出るもの＋アスベスト（調査結果による）＋登録済みのもの
+  function typesShown(c) {
+    const ids = new Set((state.settings.alwaysTypes || []).filter((id) => WT[id]));
+    if (c.asbestos === 'level3') ids.add('asb');
+    if (c.asbestos === 'level12') ids.add('asbsp');
+    manifestsOf(c).forEach((m) => ids.add(m.type));
+    (c.extraTypes || []).forEach((id) => ids.add(id));
+    return WASTE_TYPES.filter((w) => ids.has(w.id)).map((w) => w.id);
+  }
+  const estimateFor = (c, type) => {
+    const w = wasteOf(c);
+    return { concrete: w.concrete, asphalt: w.asphalt, wood: w.wood, mixed: w.mixed }[type];
+  };
+
+  function manifestCard(m, i) {
+    return `
       <div class="mcard" data-mid="${m.id}">
-        <div class="mhead"><b>No.${i + 1}</b><span class="chips" id="chips-${m.id}">${chipsHtml(m)}</span>
+        <div class="mhead"><b>${i + 1}枚目</b><span class="chips" id="chips-${m.id}">${chipsHtml(m)}</span>
           <button class="btn ghost small" data-mdel="${m.id}">削除</button></div>
         <div class="mgrid">
           <label>種類<select data-f="kind"><option value="paper" ${m.kind !== 'electronic' ? 'selected' : ''}>紙</option><option value="electronic" ${m.kind === 'electronic' ? 'selected' : ''}>電子（JWNET）</option></select></label>
           <label>交付番号<input data-f="no" value="${esc(m.no)}" placeholder="例 1234567890"></label>
           <label>交付日（搬出日）<input data-f="date" type="date" value="${esc(m.date)}"></label>
-          <label>廃棄物の種類<select data-f="type">${opt(m.type)}</select></label>
           <label>数量（${WT[m.type]?.unit || 't'}）<input data-f="qty" type="number" min="0" step="0.01" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"></label>
           <label>収集運搬業者<input data-f="carrier" list="carrierList" value="${esc(m.carrier)}"></label>
           <label>処分業者<input data-f="disposer" list="disposerList" value="${esc(m.disposer)}"></label>
@@ -391,7 +403,30 @@
           <label>${m.kind === 'electronic' ? '処分終了報告日' : 'D票 返送日'}<input data-f="d" type="date" value="${esc(m.d)}"></label>
           <label>${m.kind === 'electronic' ? '最終処分終了報告日' : 'E票 返送日'}<input data-f="e" type="date" value="${esc(m.e)}"></label>
         </div>
-      </div>`).join('') : '<p class="empty">まだマニフェストがありません。「＋ 1枚追加」か「見込みから品目ごとに作成」で始めてください。</p>';
+      </div>`;
+  }
+
+  function renderManifestList(c) {
+    const ms = manifestsOf(c), shown = typesShown(c), always = new Set(state.settings.alwaysTypes || []);
+    $('#manifestList').innerHTML = shown.map((type) => {
+      const w = WT[type], list = ms.filter((m) => m.type === type);
+      const total = list.reduce((a, m) => a + num(m.qty), 0), est = estimateFor(c, type);
+      const open = list.filter((m) => manifestChecks(m).some((x) => x.state === 'late')).length;
+      const tag = always.has(type) ? '' : type === 'asb' || type === 'asbsp' ? '<span class="tag2">アスベスト調査結果より</span>' : '<span class="tag2">追加したゴミ</span>';
+      return `
+      <section class="mgroup" data-type="${type}">
+        <div class="ghead">
+          <div class="gname">${esc(w.name)}${w.sp ? ' <span class="chip late">特別管理・期限60日</span>' : ''} ${tag}</div>
+          <div class="gsum">${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>${est ? `（見込み ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}</div>
+          <button class="btn small" data-addtype="${type}">＋ 1枚追加</button>
+        </div>
+        ${list.length ? list.map(manifestCard).join('') : '<p class="empty small-pad">まだ0枚です。搬出したら「＋ 1枚追加」で登録します。</p>'}
+        ${!always.has(type) && !list.length && type !== 'asb' && type !== 'asbsp' ? `<button class="link" data-rmtype="${type}">この種類を消す</button>` : ''}
+      </section>`;
+    }).join('');
+    const rare = WASTE_TYPES.filter((w) => !shown.includes(w.id));
+    $('#rareType').innerHTML = rare.length ? rare.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') : '<option value="">（すべて表示済み）</option>';
+    $('#addRare').disabled = !rare.length;
     const names = (k) => [...new Set(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k])).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
     $('#carrierList').innerHTML = names('carrier').map((n) => `<option value="${esc(n)}">`).join('');
     $('#disposerList').innerHTML = names('disposer').map((n) => `<option value="${esc(n)}">`).join('');
@@ -404,7 +439,7 @@
       const row = { c, m, i, x };
       if (x.state === 'late') late.push(row); else if (x.state === 'soon') soon.push(row);
     })));
-    const line = ({ c, m, i, x }) => `<li><button class="link" data-goto="${c.id}">${esc(caseName(c))}</button> No.${i + 1}（${esc(WT[m.type]?.name || '')}${m.no ? '・' + esc(m.no) : ''}）— <b>${x.label}</b> ${x.state === 'late' ? `期限 ${fmtDate(x.due)} を過ぎています。返送されない場合は状況を確認し、<b>${fmtDate(x.report)}</b>までに都道府県等へ措置内容等報告書を提出` : `期限 ${fmtDate(x.due)}`}</li>`;
+    const line = ({ c, m, x }) => `<li><button class="link" data-goto="${c.id}">${esc(caseName(c))}</button> ${esc(WT[m.type]?.name || '')}（${m.date ? fmtIso(m.date) + '搬出' : ''}${m.no ? '・' + esc(m.no) : ''}）— <b>${x.label}</b> ${x.state === 'late' ? `期限 ${fmtDate(x.due)} を過ぎています。返送されない場合は状況を確認し、<b>${fmtDate(x.report)}</b>までに都道府県等へ措置内容等報告書を提出` : `期限 ${fmtDate(x.due)}`}</li>`;
     $('#manifestAlerts').innerHTML = `
       <div class="alertbox ${late.length ? 'bad' : soon.length ? 'mid' : 'good'}">
         <b>全案件のマニフェスト：</b>${late.length ? `期限超過 ${late.length}件` : '期限超過なし'}${soon.length ? `／2週間以内に期限 ${soon.length}件` : ''}
@@ -578,19 +613,36 @@
     clearTimeout(mdelArmed[id]); delete mdelArmed[id];
     const c = cur(); c.manifests = manifestsOf(c).filter((m) => m.id !== id); save(); renderAll();
   });
-  $('#addManifest').addEventListener('click', () => {
-    const c = cur(), ms = manifestsOf(c), last = ms[ms.length - 1];
-    ms.push(newManifest(c, last ? { kind: last.kind, type: last.type, carrier: last.carrier, disposer: last.disposer, date: last.date } : {}));
-    save(); renderAll();
+  // 種類ごとの「＋ 1枚追加」：同じ種類の直前の1枚から、紙/電子・業者・日付を引き継ぐ
+  $('#manifestList').addEventListener('click', (e) => {
+    const add = e.target.closest('[data-addtype]'), rm = e.target.closest('[data-rmtype]');
+    const c = cur(), ms = manifestsOf(c);
+    if (add) {
+      const type = add.dataset.addtype, same = ms.filter((m) => m.type === type), last = same[same.length - 1] || ms[ms.length - 1];
+      const m = newManifest(c, { type, ...(last ? { kind: last.kind, carrier: last.carrier, disposer: last.disposer, date: last.date } : {}) });
+      ms.push(m); save(); renderAll();
+      const card = document.querySelector(`[data-mid="${m.id}"]`); if (card) { card.scrollIntoView({ block: 'center' }); card.querySelector('[data-f=no]')?.focus(); }
+    }
+    if (rm) { c.extraTypes = (c.extraTypes || []).filter((t) => t !== rm.dataset.rmtype); save(); renderAll(); }
   });
-  $('#bulkManifest').addEventListener('click', () => {
-    const c = cur(), w = wasteOf(c), ms = manifestsOf(c);
-    const add = (type, est) => { if (est > 0) ms.push(newManifest(c, { type, hint: `見込み ${est.toFixed(1)}` })); };
-    add('concrete', w.concrete); add('asphalt', w.asphalt); add('wood', w.wood); add('mixed', w.mixed);
-    if (c.asbestos === 'level3') ms.push(newManifest(c, { type: 'asb' }));
-    if (c.asbestos === 'level12') ms.push(newManifest(c, { type: 'asbsp' }));
-    save(); renderAll();
+  $('#addRare').addEventListener('click', () => {
+    const type = $('#rareType').value; if (!type) return;
+    const c = cur(); c.extraTypes = [...new Set([...(c.extraTypes || []), type])]; save(); renderAll();
+    document.querySelector(`.mgroup[data-type="${type}"]`)?.scrollIntoView({ block: 'center' });
   });
+  // 設定：いつも出るゴミ
+  function renderAlwaysTypes() {
+    const on = new Set(state.settings.alwaysTypes || []);
+    $('#alwaysTypes').innerHTML = WASTE_TYPES.filter((w) => w.id !== 'asb' && w.id !== 'asbsp')
+      .map((w) => `<label class="check"><input type="checkbox" data-always="${w.id}" ${on.has(w.id) ? 'checked' : ''}> ${esc(w.name)}</label>`).join('');
+  }
+  $('#alwaysTypes').addEventListener('change', (e) => {
+    const id = e.target.dataset.always; if (!id) return;
+    const set = new Set(state.settings.alwaysTypes || []);
+    if (e.target.checked) set.add(id); else set.delete(id);
+    state.settings.alwaysTypes = WASTE_TYPES.map((w) => w.id).filter((x) => set.has(x)); save(); renderAll();
+  });
+  renderAlwaysTypes();
   $('#manifestAlerts').addEventListener('click', (e) => {
     const b = e.target.closest('[data-goto]'); if (!b) return;
     state.currentId = b.dataset.goto; save(); fillForm(caseForm, cur()); renderAll();
@@ -604,7 +656,7 @@
     if (!resetArmed) { btn.textContent = 'もう一度押すと全データを消します'; resetArmed = setTimeout(() => { btn.textContent = 'すべてのデータを消して最初の状態に戻す'; resetArmed = null; }, 4000); return; }
     clearTimeout(resetArmed); resetArmed = null; btn.textContent = 'すべてのデータを消して最初の状態に戻す';
     try { localStorage.removeItem(STORE_KEY); } catch (_) { /* noop */ }
-    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAlwaysTypes(); renderAll();
     $('#tabs button[data-tab=input]').click();
   });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });
