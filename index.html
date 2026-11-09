@@ -120,6 +120,7 @@
     </div>
     <datalist id="carrierList"></datalist><datalist id="disposerList"></datalist>
     <div id="manifestCost"></div>
+    <div id="siteInvoices"></div>
     <div id="manifestCompare"></div>
     <div id="manifestReport"></div>
   </section>
@@ -210,7 +211,7 @@
       </fieldset>
       <fieldset class="wide">
         <legend>処分場ごとの単価</legend>
-        <p class="hint">処分場によって単価が違う場合はここに登録します。マニフェストの「処分業者」にこの名前を選ぶと、その処分場の単価で処分代を計算します（空欄の種類は標準の単価）。</p>
+        <p class="hint">処分場によって単価が違う場合はここに登録します。マニフェストの「処分業者」にこの名前を選ぶと、その処分場の単価で処分代を計算し、その処分場の締め日で請求をまとめます（空欄の種類は標準の単価、登録のない処分場は末日締め）。</p>
         <div id="sites"></div>
         <button type="button" class="btn ghost small" id="addSite">＋ 処分場を追加</button>
         <div id="siteCompare"></div>

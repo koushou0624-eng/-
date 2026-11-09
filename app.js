@@ -454,7 +454,52 @@
     return best;
   }
   const dispOf = (m) => num(m.qty) * unitPriceOf(m);
-  const mcostHtml = (m) => (num(m.qty) > 0 ? `処分代 <b>¥${yen(dispOf(m))}</b>` : '');
+  // マニフェストが入る請求（処分場の締め日。登録のない処分場は末日締め）
+  function billOf(m) {
+    const site = siteByName(m.disposer);
+    const close = site && site.close != null && site.close !== '' ? site.close : '末';
+    if (!m.date) return { ym: '', close };
+    const d = new Date(m.date + 'T00:00:00');
+    let end = closeDate(d.getFullYear(), d.getMonth(), close);
+    if (d > end) end = closeDate(d.getFullYear(), d.getMonth() + 1, close);
+    const prev = closeDate(end.getFullYear(), end.getMonth() - 1, close);
+    const from = new Date(prev); from.setDate(from.getDate() + 1);
+    return { ym: isoOf(end).slice(0, 7), from, to: end, close, label: `${end.getMonth() + 1}月分`, registered: !!site };
+  }
+  const mcostHtml = (m) => {
+    if (!(num(m.qty) > 0)) return '';
+    const b = billOf(m);
+    return `処分代 <b>¥${yen(dispOf(m))}</b>${b.ym ? `<span class="billtag">${b.label}の請求（${closeLabel(b.close)}締め）</span>` : ''}`;
+  };
+  // 処分場ごとの請求（全現場・締めごと）
+  let billMonth = null;
+  function renderSiteInvoices() {
+    const all = state.cases.flatMap((c) => manifestsOf(c).filter((m) => m.date && num(m.qty) > 0).map((m) => ({ c, m, b: billOf(m) })));
+    const months = [...new Set(all.map((x) => x.b.ym))].sort().reverse();
+    if (!months.length) { $('#siteInvoices').innerHTML = ''; return; }
+    const mon = billMonth && months.includes(billMonth) ? billMonth : months[0];
+    const bySite = {};
+    all.filter((x) => x.b.ym === mon).forEach((x) => {
+      const key = (x.m.disposer || '（処分業者 未入力）').trim();
+      const g = bySite[key] || (bySite[key] = { b: x.b, n: 0, cost: 0, qty: {}, cases: {} });
+      g.n++; g.cost += dispOf(x.m);
+      const u = WT[x.m.type]?.unit || 't'; g.qty[u] = (g.qty[u] || 0) + num(x.m.qty);
+      const cc = g.cases[x.c.id] || (g.cases[x.c.id] = { name: caseName(x.c), n: 0, cost: 0 }); cc.n++; cc.cost += dispOf(x.m);
+    });
+    const now = today();
+    const rows = Object.entries(bySite).sort().map(([name, g]) => `
+      <tr><td><b>${esc(name)}</b><div class="sub">${closeLabel(g.b.close)}締め${g.b.registered ? '' : '（未登録のため末日締め）'}・${g.b.from.getMonth() + 1}/${g.b.from.getDate()}〜${g.b.to.getMonth() + 1}/${g.b.to.getDate()}</div>
+        <div class="sub">${Object.values(g.cases).map((cc) => `${esc(cc.name)} ${cc.n}枚 ¥${yen(cc.cost)}`).join('／')}</div></td>
+        <td class="num">${g.n}枚</td><td class="num">${Object.entries(g.qty).map(([u, q]) => `${q.toFixed(2)}${u}`).join('＋')}</td>
+        <td class="num"><b>¥${yen(g.cost)}</b></td><td>${g.b.to < now ? '締め済み' : '締め前（途中）'}</td></tr>`).join('');
+    const total = Object.values(bySite).reduce((a, g) => a + g.cost, 0);
+    $('#siteInvoices').innerHTML = `
+      <h2>処分場ごとの請求（全現場・締めごと）</h2>
+      <label class="inline" for="billMonth">請求月 <select id="billMonth">${months.map((x) => `<option value="${x}" ${x === mon ? 'selected' : ''}>${x.replace('-', '年')}月分</option>`).join('')}</select></label>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>処分場（締め・期間・現場の内訳）</th><th class="num">枚数</th><th class="num">数量</th><th class="num">請求額（税抜）</th><th>状態</th></tr></thead>
+        <tbody>${rows}</tbody><tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td><td></td></tr></tfoot></table></div>
+      <p class="hint">処分場から届いた請求書と、枚数・金額を照らし合わせてください。締め日は「⚙ 会社・単価設定」の「処分場ごとの単価」で処分場ごとに変えられます。</p>`;
+  }
   function gsumHtml(c, type) {
     const w = WT[type], list = manifestsOf(c).filter((m) => m.type === type);
     const total = list.reduce((a, m) => a + num(m.qty), 0), cost = list.reduce((a, m) => a + dispOf(m), 0), est = estimateFor(c, type);
@@ -593,8 +638,8 @@
       <p class="hint">提出は各自治体の様式（様式第三号）で行ってください。この表は転記用の集計です。</p>`;
   }
 
-  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); }
-  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
+  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); }
+  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
 
   // ---------- リース ----------
   const leasesOf = (c) => (Array.isArray(c.leases) ? c.leases : (c.leases = []));
@@ -804,13 +849,13 @@
   function renderExpenseMonthly() {
     const ym = (iso) => String(iso || '').slice(0, 7);
     const withData = new Set();
-    state.cases.forEach((c) => { expensesOf(c).forEach((x) => withData.add(ym(x.date))); manifestsOf(c).forEach((m) => m.date && num(m.qty) && withData.add(ym(m.date))); leasesOf(c).forEach((l) => Object.keys(leaseByMonth(l)).forEach((k) => withData.add(k))); });
+    state.cases.forEach((c) => { expensesOf(c).forEach((x) => withData.add(ym(x.date))); manifestsOf(c).forEach((m) => m.date && num(m.qty) && withData.add(billOf(m).ym)); leasesOf(c).forEach((l) => Object.keys(leaseByMonth(l)).forEach((k) => withData.add(k))); });
     const sorted = [...new Set([...withData, ym(todayIso())])].filter(Boolean).sort().reverse();
     const latest = [...withData].filter(Boolean).sort().reverse()[0] || ym(todayIso());
     const mon = expMonth && sorted.includes(expMonth) ? expMonth : latest;
     const tot = { disp: 0, lease: 0 }; EXPENSE_CATS.forEach((k) => { tot[k] = 0; });
     const rows = state.cases.map((c) => {
-      const r = { disp: manifestsOf(c).filter((m) => ym(m.date) === mon).reduce((a, m) => a + dispOf(m), 0),
+      const r = { disp: manifestsOf(c).filter((m) => m.date && billOf(m).ym === mon).reduce((a, m) => a + dispOf(m), 0),
         lease: leasesOf(c).reduce((a, l) => a + (leaseByMonth(l)[mon] || 0), 0) };
       EXPENSE_CATS.forEach((k) => { r[k] = expensesOf(c).filter((x) => ym(x.date) === mon && x.cat === k).reduce((a, x) => a + num(x.amount), 0); });
       const all = r.disp + r.lease + EXPENSE_CATS.reduce((a, k) => a + r[k], 0);
@@ -825,7 +870,7 @@
       <div class="table-wrap"><table class="cost wide"><thead><tr><th>現場</th><th class="num">処分代</th><th class="num">リース</th>${EXPENSE_CATS.map((k) => `<th class="num">${k}</th>`).join('')}<th class="num">合計</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${EXPENSE_CATS.length + 4}" class="empty">この月の処分代・リース・経費はありません</td></tr>`}</tbody>
         <tfoot><tr><th>合計</th><td class="num">¥${yen(tot.disp)}</td><td class="num">¥${yen(tot.lease)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(tot[k])}</td>`).join('')}<td class="num"><b>¥${yen(grand)}</b></td></tr></tfoot></table></div>
-      <p class="hint">処分代はマニフェストの交付日（搬出日）の月、リース代は締めごとの請求の月（回送費は借りた月）で数えています。借りている途中の機械は今日までの金額です。</p>`;
+      <p class="hint">処分代は処分場の締めごとの請求の月、リース代は締めごとの請求の月（回送費は借りた月）で数えています。借りている途中の機械は今日までの金額です。</p>`;
   }
 
   function newManifest(c, extra = {}) {
@@ -996,6 +1041,7 @@
     $('#sites').innerHTML = sites.map((st) => `
       <div class="site" data-sid="${st.id}">
         <div class="site-head"><label class="pname">処分場の名前<input data-sf="name" value="${esc(st.name)}" placeholder="〇〇リサイクルセンター"></label>
+          <label>締め日<select data-sf="close">${['末'].concat(Array.from({ length: 28 }, (_, i) => String(i + 1))).map((x) => `<option value="${x}" ${String(st.close ?? '末') === x ? 'selected' : ''}>${closeLabel(x)}締め</option>`).join('')}</select></label>
           <button type="button" class="btn ghost small" data-sdel="${st.id}">削除</button></div>
         <div class="disp-grid">${WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-sp="${w.id}" value="${esc(st.prices?.[w.id] ?? '')}" placeholder="受け入れなし／標準 ${yen(dispPrice(w.id))}"></label>`).join('')}</div>
       </div>`).join('') || '<p class="empty">登録された処分場はありません。</p>';
@@ -1017,6 +1063,7 @@
     const sites = (state.settings.sites || []).map((x) => ({ ...x, prices: { ...(x.prices || {}) } }));
     const st = sites.find((x) => x.id === box.dataset.sid); if (!st) return;
     if (e.target.dataset.sf === 'name') st.name = e.target.value;
+    if (e.target.dataset.sf === 'close') st.close = e.target.value;
     if (e.target.dataset.sp) st.prices[e.target.dataset.sp] = e.target.value;
     state.settings.sites = sites; save(); renderSiteCompare(); renderAll();
   });
@@ -1130,6 +1177,7 @@
     const b = e.target.closest('[data-goto]'); if (!b) return;
     state.currentId = b.dataset.goto; save(); fillForm(caseForm, cur()); renderAll();
   });
+  $('#siteInvoices').addEventListener('change', (e) => { if (e.target.id === 'billMonth') { billMonth = e.target.value; renderSiteInvoices(); } });
   $('#manifestReport').addEventListener('change', (e) => {
     if (e.target.id === 'reportFy') { reportFy = parseInt(e.target.value, 10); renderManifestReport(); }
   });

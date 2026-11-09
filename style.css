@@ -192,3 +192,8 @@ table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
 .company { display: grid; grid-template-columns: 2fr 1fr auto; gap: 0 8px; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 4px; }
 .company .btn { margin-bottom: 8px; }
 @media (max-width: 600px) { .company { grid-template-columns: 1fr auto; } .company .pname { grid-column: 1 / -1; } }
+.billtag { margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+.site-head label:not(.pname) { margin: 4px 0; }
+.mcost { white-space: normal; min-width: 0; }
+.billtag { display: inline-block; }
+@media (max-width: 600px) { .mhead .chips { flex: 1 1 100%; order: 4; } }
