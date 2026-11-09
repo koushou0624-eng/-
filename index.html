@@ -10,9 +10,8 @@
 <header class="topbar no-print">
   <div class="brand">カイタイ事務 <span class="tag">試作版</span> <span id="syncStatus" class="sync" hidden></span></div>
   <div class="case-switch">
-    <select id="caseSelect" aria-label="案件を選択"></select>
-    <button id="newCase" class="btn">＋ 新規案件</button>
-    <button id="deleteCase" class="btn ghost">削除</button>
+    <label class="case-pick" for="caseSelect"><span>現場</span><select id="caseSelect" aria-label="現場を選ぶ"></select></label>
+    <button id="newCase" class="btn small" title="新しい現場を作る">＋ 新しい現場</button>
   </div>
 </header>
 
@@ -138,6 +137,7 @@
         <textarea name="notes" rows="3" placeholder="例：地中埋設物が出た場合は別途お見積りとなります。"></textarea>
       </fieldset>
     </form>
+    <div class="danger-zone"><button id="deleteCase" class="btn ghost">この現場を削除する</button></div>
   </section>
 
   <!-- ② 期限 -->
@@ -173,7 +173,7 @@
     <p class="hint">ゴミの種類ごとに分かれています。返送された票の日付を入れると「済」になります。</p>
     <div id="manifestList"></div>
     <div class="rare">
-      <label for="rareType">めったに出ないゴミを追加</label>
+      <label for="rareType">種類を選んで1枚追加（返送日などを細かく入れるとき）</label>
       <div class="rare-row"><select id="rareType"></select><button class="btn ghost" id="addRare">＋ 追加</button></div>
     </div>
     </details>

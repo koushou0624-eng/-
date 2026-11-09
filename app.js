@@ -222,7 +222,7 @@
   // ---------- 描画 ----------
   function renderCaseSelect() {
     const sel = $('#caseSelect');
-    sel.innerHTML = state.cases.map((c) => `<option value="${c.id}" ${c.id === state.currentId ? 'selected' : ''}>${esc(c.estimateNo)} ${esc(c.clientName || '（施主未入力）')} 様</option>`).join('');
+    sel.innerHTML = state.cases.map((c) => `<option value="${c.id}" ${c.id === state.currentId ? 'selected' : ''}>${esc(c.clientName ? c.clientName + '様邸' : '（名前未入力の現場）')}${c.siteAddress ? '（' + esc(c.siteAddress) + '）' : ''}</option>`).join('');
   }
 
   function renderSchedule(c) {
@@ -433,8 +433,12 @@
     const from = new Date(prev); from.setDate(from.getDate() + 1);
     return { ym: isoOf(end).slice(0, 7), from, to: end, close, label: `${end.getMonth() + 1}月分`, registered: !!site };
   }
+  // 1回の搬出で100t以上はまずない → kg で入れた可能性が高い
+  const tooHeavy = (m) => (WT[m.type] || {}).unit !== '㎥' && num(m.qty) >= 100;
+  const fixKgHtml = (m) => (tooHeavy(m) ? `<span class="chip late">⚠ ${m.qty}tは多すぎます</span><button type="button" class="btn small" data-fixkg="${m.id}">${Math.round(num(m.qty)) / 1000}tに直す（kgで入れた場合）</button>` : '');
   const mcostHtml = (m) => {
     if (!(num(m.qty) > 0)) return '';
+    if (tooHeavy(m)) return fixKgHtml(m);
     const b = billOf(m);
     return `${m.via === 'line' ? '<span class="chip line">LINEから</span> ' : ''}処分代 <b>¥${yen(dispOf(m))}</b>${b.ym ? `<span class="billtag">${b.label}の請求（${closeLabel(b.close)}締め）</span>` : ''}`;
   };
@@ -514,7 +518,8 @@
   }
 
   function renderManifestList(c) {
-    const ms = manifestsOf(c), shown = typesShown(c), always = new Set(state.settings.alwaysTypes || []);
+    const ms = manifestsOf(c), always = new Set(state.settings.alwaysTypes || []);
+    const shown = typesShown(c).filter((type) => ms.some((m) => m.type === type) || (type === 'asb' && c.asbestos === 'level3') || (type === 'asbsp' && c.asbestos === 'level12'));
     $('#manifestList').innerHTML = shown.map((type) => {
       const w = WT[type], list = ms.filter((m) => m.type === type);
       const total = list.reduce((a, m) => a + num(m.qty), 0), est = estimateFor(c, type);
@@ -527,13 +532,11 @@
           <div class="gsum" id="gsum-${type}">${gsumHtml(c, type)}</div>
           <button class="btn small" data-addtype="${type}">＋ 1枚追加</button>
         </div>
-        ${list.length ? list.map(manifestCard).join('') : '<p class="empty small-pad">まだ0枚です。搬出したら「＋ 1枚追加」で登録します。</p>'}
-        ${!always.has(type) && !list.length && type !== 'asb' && type !== 'asbsp' ? `<button class="link" data-rmtype="${type}">この種類を消す</button>` : ''}
+        ${list.length ? list.map(manifestCard).join('') : '<p class="empty small-pad">まだありません。</p>'}
       </section>`;
     }).join('');
-    const rare = WASTE_TYPES.filter((w) => !shown.includes(w.id));
-    $('#rareType').innerHTML = rare.length ? rare.map((w) => `<option value="${w.id}">${esc(w.name)}（${esc(w.legal)}）</option>`).join('') : '<option value="">（すべて表示済み）</option>';
-    $('#addRare').disabled = !rare.length;
+    if (!shown.length) $('#manifestList').innerHTML = '<p class="empty">まだ記録がありません。</p>';
+    $('#rareType').innerHTML = WASTE_TYPES.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('');
     const names = (k) => [...new Set((k === 'disposer' ? (state.settings.sites || []).map((x) => x.name) : []).concat(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k]))).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
     $('#carrierList').innerHTML = names('carrier').map((n) => `<option value="${esc(n)}">`).join('');
     $('#disposerList').innerHTML = names('disposer').map((n) => `<option value="${esc(n)}">`).join('');
@@ -776,8 +779,8 @@
     const list = expensesOf(c).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
     const sum = expenseSummary(c);
     $('#expenseList').innerHTML = `
-      <div class="kpis compact">${EXPENSE_CATS.map((k) => `<div class="kpi"><div class="k">${k}</div><div class="v">¥${yen(sum.byCat[k] || 0)}</div></div>`).join('')}
-        <div class="kpi"><div class="k">経費 合計</div><div class="v">¥${yen(sum.total)}</div></div></div>
+      <div class="sumlist">${EXPENSE_CATS.map((k) => `<div><span>${k}</span><b>¥${yen(sum.byCat[k] || 0)}</b></div>`).join('')}
+        <div class="total"><span>この現場の経費 合計</span><b>¥${yen(sum.total)}</b></div></div>
       <div class="table-wrap"><table class="cost wide"><thead><tr><th>日付</th><th>項目</th><th class="num">金額</th><th>メモ</th><th></th></tr></thead>
         <tbody>${list.map((x) => `<tr><td>${fmtIso(x.date)}</td><td>${esc(x.cat)}</td><td class="num">¥${yen(x.amount)}</td><td>${esc(x.memo)}</td><td class="num"><button class="btn ghost small" data-expdel="${x.id}">削除</button></td></tr>`).join('')
           || '<tr><td colspan="5" class="empty">まだ経費がありません</td></tr>'}</tbody></table></div>`;
@@ -1006,14 +1009,16 @@
   }
   $('#quickWaste').addEventListener('submit', (e) => {
     e.preventDefault();
-    const qty = num($('#qwQty').value);
+    let qty = num($('#qwQty').value);
     if (!(qty > 0)) { $('#qwQty').focus(); toast('重さを入れてください'); return; }
+    let kgNote = '';
+    if (qty >= 100) { kgNote = `（${qty}kg → ${qty / 1000}t に直しました）`; qty = qty / 1000; }
     const c = cur();
     const site = $('#qwSite').value.trim() || state.settings.defDisposer || '';
     manifestsOf(c).push(newManifest(c, { type: $('#qwType').value, qty: String(qty), disposer: site, date: $('#qwDate').value || todayIso() }));
     $('#qwQty').value = '';
     save(); renderAll();
-    toast(`記録しました：${(WT[$('#qwType').value] || {}).name} ${qty}t`);
+    toast(`記録しました：${(WT[$('#qwType').value] || {}).name} ${qty}t${kgNote}`);
   });
   // 捨てた記録の一覧（この現場・新しい順）
   function renderWasteLog() {
@@ -1022,9 +1027,16 @@
       .sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.lineAt || '').localeCompare(String(x.lineAt || '')));
     $('#wasteLog').innerHTML = list.length ? list.map((m) => {
       const late = manifestChecks(m).some((x) => x.state === 'late');
-      return `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</b><span class="w">${esc(m.disposer || '処分場未入力')}</span><span class="y">¥${yen(dispOf(m))}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}${late ? '<span class="chip late">返送期限切れ</span>' : ''}<button type="button" class="link" data-edit="${m.id}">詳しく</button></li>`;
+      return `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</b><span class="w">${esc(m.disposer || '処分場未入力')}</span><span class="y">¥${yen(dispOf(m))}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}${late ? '<span class="chip late">返送期限切れ</span>' : ''}${fixKgHtml(m)}<button type="button" class="link" data-edit="${m.id}">詳しく</button></li>`;
     }).join('') : '<li class="empty">まだ記録がありません。上の「記録する」か、公式LINEから記録できます。</li>';
   }
+  // 「○tに直す」：kg で入れた重さを t に直す（処分の一覧・詳しい入力のどちらからでも）
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fixkg]'); if (!b) return;
+    const c = cur(), m = manifestsOf(c).find((x) => x.id === b.dataset.fixkg); if (!m) return;
+    m.qty = String(Math.round(num(m.qty)) / 1000); save(); renderAll();
+    toast(`${m.qty}tに直しました`);
+  });
   $('#wasteLog').addEventListener('click', (e) => {
     const b = e.target.closest('[data-edit]'); if (!b) return;
     $('#manifestDetail').open = true;
@@ -1077,8 +1089,10 @@
   });
   $('#addRare').addEventListener('click', () => {
     const type = $('#rareType').value; if (!type) return;
-    const c = cur(); c.extraTypes = [...new Set([...(c.extraTypes || []), type])]; save(); renderAll();
-    document.querySelector(`.mgroup[data-type="${type}"]`)?.scrollIntoView({ block: 'center' });
+    const c = cur(), ms = manifestsOf(c), same = ms.filter((m) => m.type === type), last = same[same.length - 1] || ms[ms.length - 1];
+    const m = newManifest(c, { type, ...(last ? { kind: last.kind, carrier: last.carrier, disposer: last.disposer } : {}) });
+    ms.push(m); save(); renderAll();
+    const card = document.querySelector(`.mcard[data-mid="${m.id}"]`); if (card) { card.scrollIntoView({ block: 'center' }); card.querySelector('[data-f=qty]')?.focus(); }
   });
   // リースの追加・入力・削除
   $('#addLease').addEventListener('click', () => {

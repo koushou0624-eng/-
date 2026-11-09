@@ -312,3 +312,35 @@ table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
 .fold[open] > summary { margin-bottom: 10px; }
 .mcard.flash { outline: 3px solid var(--accent); }
 body[data-section=home] .case-switch, body[data-section=settings] .case-switch { display: none; }
+
+/* ===== 見やすさの調整（2） ===== */
+.topbar { padding-block: 8px; }
+.brand { font-size: 16px; }
+.case-switch { flex: 1; justify-content: flex-end; align-items: center; min-width: 0; }
+.case-pick { display: flex; align-items: center; gap: 6px; margin: 0; color: #c9d1d9; font-size: 12px; min-width: 0; flex: 1; max-width: 360px; }
+.case-pick select { margin: 0; padding: 7px 8px; font-size: 15px; font-weight: 700; border-radius: 8px; min-width: 0; flex: 1; }
+.case-switch .btn.small { white-space: nowrap; }
+.danger-zone { margin-top: 18px; padding-top: 12px; border-top: 1px dashed var(--line); text-align: right; }
+.danger-zone .btn { color: #c92a2a; }
+/* マニフェストの見出し：名前／合計／追加ボタン を崩れない並びに */
+.ghead { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.ghead .gname { grid-column: 1; }
+.ghead .btn { grid-column: 2; grid-row: 1; }
+.ghead .gsum { grid-column: 1 / -1; font-size: 14px; }
+.mgroup { background: var(--panel); }
+.small-pad { margin: 2px 0; }
+/* 経費の合計：1つの表 */
+.sumlist { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+.sumlist > div { display: flex; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.sumlist > div:last-child { border-bottom: 0; }
+.sumlist b { font-variant-numeric: tabular-nums; }
+.sumlist .total { background: var(--soft); font-weight: 700; }
+.sumlist .total b { font-size: 18px; }
+/* 全体：文字の行間と余白を少し広く */
+body { line-height: 1.55; }
+.hint { line-height: 1.6; }
+@media (max-width: 600px) {
+  .topbar { flex-wrap: nowrap; }
+  .brand .tag { display: none; }
+  .case-switch .btn.small { padding: 7px 10px; }
+}
