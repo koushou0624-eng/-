@@ -277,6 +277,24 @@
     return res;
   }
 
+  // 伝票の写真から AI が読み取った項目を、文章の記録（parseRecord に渡せる1行）に変える
+  // t = { date: 'YYYY-MM-DD', disposer: '処分場', site: '現場・排出場所', waste: '品名', net_kg: 数字, net_t: 数字 }
+  function ticketToText(t) {
+    if (!t) return '';
+    const parts = [];
+    if (t.date && /^\d{4}-\d{1,2}-\d{1,2}$/.test(t.date)) { const [, m, d] = t.date.split('-'); parts.push(`${num(m)}/${num(d)}`); }
+    if (t.disposer) parts.push(String(t.disposer).replace(/\s+/g, ''));
+    if (t.site) parts.push(String(t.site).replace(/\s+/g, ''));
+    if (t.waste) parts.push(String(t.waste).replace(/\s+/g, ''));
+    const tons = num(t.net_t) > 0 ? num(t.net_t) : (num(t.net_kg) > 0 ? num(t.net_kg) / 1000 : 0);
+    if (tons > 0) parts.push(`${Math.round(tons * 1000) / 1000}t`);
+    return parts.join(' ');
+  }
+  // 伝票を読み取る AI への指示（返事は JSON だけ）
+  const TICKET_PROMPT = 'これは産業廃棄物を処分場に持ち込んだときの計量伝票（計量票・受入伝票）の写真です。次の項目を読み取り、JSONだけを返してください。読めない項目は null にしてください。\n' +
+    '{"date":"計量日（YYYY-MM-DD）","disposer":"処分場・受入先の会社名","site":"排出場所・現場名・現場住所（なければ null）","waste":"品名・廃棄物の種類（例：木くず、コンクリートがら、混合廃棄物、廃プラ、瓦、石膏ボード）","net_kg":"正味重量（kg、数字だけ）","net_t":"正味重量がトンで書かれていればその数字"}\n' +
+    '注意：総重量・空車重量ではなく、正味（NET・差引）重量を使ってください。伝票でない写真なら {"not_ticket":true} を返してください。';
+
   // マニフェスト1枚分（画面と同じ形）
   function manifestFromRecord(r, state, by) {
     return {
@@ -364,7 +382,7 @@
     WASTE_TYPES, WT, plus3BizDays, manifestChecks,
     LEASE_MODES, lastOfMonth, addMonthsClamp, companyOf, closeOf, closeLabel, closeDate, segEnd, dayCount, mLabel, leaseCalc,
     caseName, collectAlerts, alertMessage,
-    kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, caseLabel, LINE_HELP,
+    kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, caseLabel, LINE_HELP, ticketToText, TICKET_PROMPT,
   };
   root.KJCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

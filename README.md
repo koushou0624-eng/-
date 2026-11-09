@@ -28,6 +28,7 @@
 - 計算（リース・マニフェストの期限、毎朝の通知文）は `core.js` にまとめ、画面と通知で同じものを使います
 - 毎朝の LINE 通知：`supabase/functions/daily-alerts`（Edge Function）を pg_cron が毎朝 7:00（日本時間）に呼び出します。LINE のトークンと宛先は「⚙ 会社・単価設定」→「毎朝のLINE通知」で保存し、Supabase の `kj_notify` にだけ置きます（端末には保存しません）
 - LINE で入力：公式LINEに「ヒラヤマ 住吉区 シバ 3t」のように送ると、`supabase/functions/line-webhook` が読み取って（core.js の parseRecord）、その現場のマニフェストに追加し、返事をします。「取消」で直前の記録を消し、現場が複数当てはまるときは番号で聞き返します。LINE と会社の連携は「⚙ 会社・単価設定」→「LINEで入力」で出す6桁の連携番号（30分有効）で行います（`supabase/migrations/005_line_input.sql`）。処分場には「LINEでの呼び方」を登録できます
+- 伝票の写真：公式LINEに計量伝票の写真を送ると、Google Gemini（Supabase の秘密情報 `GEMINI_API_KEY`）が処分場・日付・品名・正味重量を読み取り、文章の記録と同じ仕組みで登録します（core.js の ticketToText / TICKET_PROMPT）。足りない項目は、その項目だけ聞き返します
 - Edge Function を更新するときは `bash supabase/deploy-function.sh daily-alerts` / `line-webhook`（core.js も一緒に配置）
 
 ## 使い方

@@ -11,6 +11,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET') ?? '';
 const CHANNEL_TOKEN = Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN') ?? '';
+const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY') ?? ''; // 伝票の写真を読む AI（Google Gemini）
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash';
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
 // Edge Function は UTC で動くので、日本時間の「今日」を UTC の値として扱う（core.js と同じ考え方）
@@ -123,15 +125,72 @@ async function handleText(ev: any) {
     return await addRecord(link, { ...link.pending.record, target }, state);
   }
 
+  // 前に足りない項目があった記録の続き（例：「シバ」だけ返ってきた）
+  // ただし、送られた1行だけで記録が完成するなら、そちらを使う（新しい記録を送り直した場合）
+  const alone = K.parseRecord(text, state, jstNow());
+  const complete = !alone.missing.includes('type') && !alone.missing.includes('qty');
+  const merged = !complete && link.pending && link.pending.text && !link.pending.candidates ? `${link.pending.text} ${text}` : text;
+  return await recordFromText(link, merged, state, '');
+}
+
+// 1行の記録を読み取って登録する（文章でも、伝票の写真から作った1行でも同じ）
+// deno-lint-ignore no-explicit-any
+async function recordFromText(link: any, text: string, state: any, prefix: string) {
+  const uid = link.line_user_id;
   const r = K.parseRecord(text, state, jstNow());
-  if (r.missing.includes('type') || r.missing.includes('qty')) return K.askReply(r);
+  if (r.missing.includes('type') || r.missing.includes('qty')) {
+    await admin.from('kj_line_users').update({ pending: { text } }).eq('line_user_id', uid);
+    const ask = [r.missing.includes('type') && 'ゴミの種類（例：シバ、ガラ、ミンチ）', r.missing.includes('qty') && '重さ（例：3t、3000kg）'].filter(Boolean).join('と');
+    return `${prefix}${ask}が分かりませんでした。${ask}だけ送ってください。\n（全部やり直すときは「取消」ではなく、もう一度まとめて送ってください）`;
+  }
   if (!r.target) {
     // deno-lint-ignore no-explicit-any
     const candidates = (r.candidates || []).slice(0, 9).map((c: any) => c.id);
     await admin.from('kj_line_users').update({ pending: { record: { ...r, target: null, candidates: null }, candidates } }).eq('line_user_id', uid);
-    return K.askReply(r);
+    return prefix + K.askReply(r);
   }
-  return await addRecord(link, r, state);
+  return prefix + await addRecord(link, r, state);
+}
+
+// ---------- 伝票の写真 ----------
+function toBase64(buf: Uint8Array) {
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+// deno-lint-ignore no-explicit-any
+async function readTicket(messageId: string): Promise<any> {
+  const img = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, { headers: { Authorization: `Bearer ${CHANNEL_TOKEN}` } });
+  if (!img.ok) throw new Error(`LINE画像 ${img.status}`);
+  const mime = img.headers.get('content-type') || 'image/jpeg';
+  const data = toBase64(new Uint8Array(await img.arrayBuffer()));
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+    body: JSON.stringify({
+      contents: [{ parts: [{ inline_data: { mime_type: mime, data } }, { text: K.TICKET_PROMPT }] }],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+    }),
+  });
+  if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const out = await r.json();
+  const txt = out?.candidates?.[0]?.content?.parts?.map((x: { text?: string }) => x.text || '').join('') || '';
+  const m = txt.match(/\{[\s\S]*\}/);
+  return m ? JSON.parse(m[0]) : null;
+}
+// deno-lint-ignore no-explicit-any
+async function handleImage(ev: any) {
+  const uid: string = ev.source?.userId;
+  const { data: link } = await admin.from('kj_line_users').select('*').eq('line_user_id', uid).maybeSingle();
+  if (!link) return 'このLINEはまだ会社と連携していません。\n会社の代表の人から「連携番号（6桁）」をもらって、ここに送ってください。';
+  if (!GEMINI_KEY) return '伝票の写真の読み取りは、まだ準備中です。「処分場 現場 種類 重さ」を文字で送ってください。\n例）ヒラヤマ 伏見 シバ 3t';
+  const t = await readTicket(ev.message.id);
+  if (!t || t.not_ticket) return '伝票の写真として読み取れませんでした。伝票全体が写るように撮り直すか、文字で送ってください。\n例）ヒラヤマ 伏見 シバ 3t';
+  const line = K.ticketToText(t);
+  const read = [t.date && `日付 ${t.date}`, t.disposer && `処分場 ${t.disposer}`, t.site && `現場 ${t.site}`, t.waste && `品名 ${t.waste}`,
+    (t.net_t || t.net_kg) && `正味 ${t.net_t ? t.net_t + 't' : t.net_kg + 'kg'}`].filter(Boolean).join('・');
+  const state = await companyState(link.company_id);
+  return await recordFromText(link, line, state, `📷 伝票から読み取りました\n（${read || '読み取れた項目なし'}）\n\n`);
 }
 
 Deno.serve(async (req) => {
@@ -148,6 +207,8 @@ Deno.serve(async (req) => {
       } else if (ev.type === 'message' && ev.message?.type === 'text') {
         const text = await handleText(ev);
         if (text) await reply(ev.replyToken, text);
+      } else if (ev.type === 'message' && ev.message?.type === 'image') {
+        await reply(ev.replyToken, await handleImage(ev));
       }
     } catch (e) {
       console.error('event failed', e);
