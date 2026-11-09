@@ -436,7 +436,7 @@
   const mcostHtml = (m) => {
     if (!(num(m.qty) > 0)) return '';
     const b = billOf(m);
-    return `処分代 <b>¥${yen(dispOf(m))}</b>${b.ym ? `<span class="billtag">${b.label}の請求（${closeLabel(b.close)}締め）</span>` : ''}`;
+    return `${m.via === 'line' ? '<span class="chip line">LINEから</span> ' : ''}処分代 <b>¥${yen(dispOf(m))}</b>${b.ym ? `<span class="billtag">${b.label}の請求（${closeLabel(b.close)}締め）</span>` : ''}`;
   };
   // 処分場ごとの請求（全現場・締めごと）
   let billMonth = null;
@@ -937,6 +937,7 @@
     $('#sites').innerHTML = sites.map((st) => `
       <div class="site" data-sid="${st.id}">
         <div class="site-head"><label class="pname">処分場の名前<input data-sf="name" value="${esc(st.name)}" placeholder="〇〇リサイクルセンター"></label>
+          <label class="pname">LINEでの呼び方（カンマ区切り）<input data-sf="alias" value="${esc(st.alias || '')}" placeholder="例：ヒラヤマ, 平山"></label>
           <label>締め日<select data-sf="close">${['末'].concat(Array.from({ length: 28 }, (_, i) => String(i + 1))).map((x) => `<option value="${x}" ${String(st.close ?? '末') === x ? 'selected' : ''}>${closeLabel(x)}締め</option>`).join('')}</select></label>
           <button type="button" class="btn ghost small" data-sdel="${st.id}">削除</button></div>
         <div class="disp-grid">${WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-sp="${w.id}" value="${esc(st.prices?.[w.id] ?? '')}" placeholder="受け入れなし／標準 ${yen(dispPrice(w.id))}"></label>`).join('')}</div>
@@ -960,6 +961,7 @@
     const st = sites.find((x) => x.id === box.dataset.sid); if (!st) return;
     if (e.target.dataset.sf === 'name') st.name = e.target.value;
     if (e.target.dataset.sf === 'close') st.close = e.target.value;
+    if (e.target.dataset.sf === 'alias') st.alias = e.target.value;
     if (e.target.dataset.sp) st.prices[e.target.dataset.sp] = e.target.value;
     state.settings.sites = sites; save(); renderSiteCompare(); renderAll();
   });

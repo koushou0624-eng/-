@@ -281,6 +281,25 @@
       <p class="hint">入力した内容は自動でネットに保存され、ほかの端末でも同じデータが見られます。</p>
       <button type="button" id="logoutBtn" class="btn ghost">ログアウト</button>
     </fieldset>
+    <fieldset id="lineInBox" class="cloudbox" hidden>
+      <legend>LINEで入力（運転手さん・社員）</legend>
+      <p class="hint">公式LINEに「ヒラヤマ 住吉区 シバ 3t」のように送ると、その現場のマニフェストに自動で入ります。最初に一度だけ、LINEを会社と連携します。</p>
+      <ol class="steps">
+        <li>公式LINEを友だち追加：<a id="lineAddLink" href="#" target="_blank" rel="noopener"></a></li>
+        <li>下のボタンで出る<b>6桁の連携番号</b>を、30分以内に公式LINEへ送る</li>
+      </ol>
+      <div class="toolbar">
+        <button type="button" id="lineCodeSelf" class="btn">自分のLINEを連携する</button>
+      </div>
+      <div id="lineDriverArea" class="rare-row">
+        <input id="lineDriverName" placeholder="運転手さんの名前（例：田中さん）" maxlength="40">
+        <button type="button" id="lineCodeDriver" class="btn ghost">運転手さん用の連携番号を出す</button>
+      </div>
+      <div id="lineCodeOut" class="codebox" hidden></div>
+      <p class="hint" style="margin-top:12px">連携しているLINE</p>
+      <ul id="lineUserList" class="members"></ul>
+      <p id="lineInMsg" class="hint" role="status"></p>
+    </fieldset>
     <fieldset id="lineBox" class="cloudbox" hidden>
       <legend>毎朝のLINE通知</legend>
       <p class="hint">毎朝7時ごろ、月極が近いリース・マニフェストの期限・届出の期限など、注意があるときだけLINEに届きます。</p>

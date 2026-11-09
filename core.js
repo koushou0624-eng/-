@@ -136,6 +136,160 @@
   }
   const caseName = (c) => `${c.clientName || '（施主未入力）'}様邸`;
 
+  // ---------- LINE で送られた「捨てた記録」を読み取る ----------
+  // 例：「ヒラヤマ 住吉区 シバ 3t」「住吉 ミンチ 2.4トン 平山」「11/8 山田邸 有筋 4t」
+  // ひらがな→カタカナ、全角→半角にそろえてから照合する
+  const kana = (str) => String(str || '').normalize('NFKC').replace(/[ぁ-ゖ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60)).toLowerCase();
+  // 住所などの照合用：空白・記号と「都道府県市区町村」を除く
+  const squash = (str) => kana(str).replace(/[\s、,，・\-ー－−()（）「」『』様邸]/g, '').replace(/[都道府県市区町村]/g, '');
+
+  // ゴミの種類の言い方（長いものから照合する）
+  const WASTE_WORDS = [
+    ['有筋ガラ', 'concreteR'], ['鉄筋ガラ', 'concreteR'], ['有筋', 'concreteR'],
+    ['無筋ガラ', 'concrete'], ['コンクリートガラ', 'concrete'], ['コンクリガラ', 'concrete'], ['コンガラ', 'concrete'], ['無筋', 'concrete'], ['コンクリ', 'concrete'],
+    ['アスファルト', 'asphalt'], ['アスガラ', 'asphalt'], ['アスコン', 'asphalt'],
+    ['ガラス', 'glass'], ['ガラ', 'concrete'],
+    ['木クズ', 'wood'], ['木屑', 'wood'], ['廃木材', 'wood'], ['木材', 'wood'], ['シバ', 'wood'], ['柴', 'wood'], ['木', 'wood'],
+    ['混合廃棄物', 'mixed'], ['ミンチ', 'mixed'], ['混廃', 'mixed'], ['混合', 'mixed'],
+    ['廃プラ', 'plastic'], ['プラ', 'plastic'],
+    ['カワラ', 'glass'], ['瓦', 'glass'], ['陶器', 'glass'],
+    ['石膏ボード', 'gypsum'], ['セッコウ', 'gypsum'], ['石膏', 'gypsum'], ['ボード', 'gypsum'],
+    ['鉄クズ', 'metal'], ['金属', 'metal'], ['鉄', 'metal'],
+    ['アスベスト', 'asb'], ['石綿', 'asb'],
+  ].map(([w, t]) => [kana(w), t]).sort((a, b) => b[0].length - a[0].length);
+
+  // いちばん長く一致する部分の長さ（照合の点数）
+  function overlap(a, b) {
+    if (!a || !b) return 0;
+    if (b.includes(a)) return a.length + 2; // 送った言葉がまるごと含まれていれば高得点
+    let best = 0;
+    for (let i = 0; i < a.length; i++) for (let j = i + best + 1; j <= a.length; j++) { if (b.includes(a.slice(i, j))) best = j - i; else break; }
+    return best >= 2 ? best : 0;
+  }
+
+  // 処分場の候補：登録した処分場（名前と呼び方）、これまでのマニフェストの処分業者、いつもの処分業者
+  function siteCandidates(state) {
+    const s = state.settings || {}, out = [];
+    (s.sites || []).forEach((st) => { if (st.name) out.push({ name: st.name, words: [st.name].concat(String(st.alias || '').split(/[,、，\s]+/)).filter(Boolean) }); });
+    const seen = new Set(out.map((x) => x.name));
+    const add = (n) => { if (n && !seen.has(n)) { seen.add(n); out.push({ name: n, words: [n] }); } };
+    add(s.defDisposer);
+    (state.cases || []).forEach((c) => (c.manifests || []).forEach((m) => add(m.disposer)));
+    return out;
+  }
+
+  const activeCase = (c, now) => {
+    const end = c.endDate ? new Date(c.endDate + 'T00:00:00') : null;
+    const start = c.startDate ? new Date(c.startDate + 'T00:00:00') : null;
+    return (!end || end >= addDays(isoOf(now), -21)) && (!start || start <= addDays(isoOf(now), 14));
+  };
+  const caseLabel = (c) => `${caseName(c)}${c.siteAddress ? '（' + c.siteAddress + '）' : ''}`;
+
+  // 単価：処分場ごとの単価 → 標準の単価
+  function priceFor(state, disposer, type) {
+    const s = state.settings || {};
+    const st = (s.sites || []).find((x) => x.name && x.name.trim() === String(disposer || '').trim());
+    const v = st && st.prices ? st.prices[type] : '';
+    if (v !== '' && v != null) return num(v);
+    return num((s.dispPrices || {})[type]);
+  }
+
+  function parseRecord(text, state, date) {
+    const now = todayOf(date);
+    let t = kana(text).replace(/[、,，・\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const raw = String(text || '').normalize('NFKC');
+    // 日付（なければ今日）：「11/8」「11月8日」「昨日」
+    let day = new Date(now);
+    const md = raw.match(/(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?/);
+    if (md) {
+      day = new Date(now.getFullYear(), num(md[1]) - 1, num(md[2]));
+      if (day > addDays(isoOf(now), 7)) day.setFullYear(day.getFullYear() - 1);
+      t = t.replace(kana(md[0]).replace(/\//g, ' '), ' ');
+    } else if (/昨日|きのう/.test(raw)) { day = addDays(isoOf(now), -1); t = t.replace(/昨日|キノウ/g, ' '); }
+    else if (/一昨日|おととい/.test(raw)) { day = addDays(isoOf(now), -2); t = t.replace(/一昨日|オトトイ/g, ' '); }
+    // 重さ・量：「3t」「3トン」「2.4ton」「3000kg」「3000キロ」「2m3」「2立米」
+    let qty = null, unit = 't';
+    const w = t.match(/(\d+(?:\.\d+)?)\s*(トン|ton|t|kg|キロ|m3|立米|リューベ)(?![a-z])/i);
+    if (w) {
+      qty = num(w[1]);
+      if (/kg|キロ/i.test(w[2])) qty = qty / 1000;
+      if (/m3|立米|リューベ/i.test(w[2])) unit = 'm3';
+      t = t.replace(w[0], ' ');
+    }
+    // ゴミの種類
+    let type = null;
+    for (const [word, id] of WASTE_WORDS) { const i = t.indexOf(word); if (i >= 0) { type = id; t = t.slice(0, i) + ' ' + t.slice(i + word.length); break; } }
+    if (qty == null) { const bare = t.match(/(?:^|\s)(\d+(?:\.\d+)?)(?=\s|$)/); if (bare) { qty = num(bare[1]); t = t.replace(bare[0], ' '); } } // 単位なしの数字はトンとみなす
+    const tokens = t.split(' ').map((x) => x.trim()).filter((x) => x.length >= 2 || /[\u4e00-\u9fff]/.test(x)); // 「堺」など漢字1文字の地名も使う
+
+    // 処分場
+    const sites = siteCandidates(state);
+    let disposer = null; const used = new Set();
+    let best = { score: 0 };
+    tokens.forEach((tok) => sites.forEach((st) => st.words.forEach((wd) => {
+      const sc = overlap(squash(tok), squash(wd));
+      if (sc > best.score) best = { score: sc, name: st.name, tok };
+    })));
+    if (best.score >= 3 || (best.score >= 2 && best.tok && squash(best.tok).length <= 3)) { disposer = best.name; used.add(best.tok); }
+
+    // 現場
+    const cases = (state.cases || []);
+    const scored = cases.map((c) => {
+      let sc = 0;
+      tokens.filter((tok) => !used.has(tok)).forEach((tok) => {
+        const k = squash(tok);
+        sc = Math.max(sc, overlap(k, squash(c.siteAddress)), overlap(k, squash(c.clientName)), overlap(k, squash(c.estimateNo)));
+      });
+      return { c, sc };
+    }).filter((x) => x.sc > 0).sort((a, b) => b.sc - a.sc);
+    let target = null, candidates = [];
+    if (scored.length && (scored.length === 1 || scored[0].sc > scored[1].sc)) target = scored[0].c;
+    else if (scored.length) candidates = scored.filter((x) => x.sc === scored[0].sc).map((x) => x.c);
+    else {
+      const act = cases.filter((c) => activeCase(c, now));
+      if (act.length === 1) target = act[0]; else candidates = act.length ? act : cases;
+    }
+    // 現場の照合に使わなかった言葉は、未登録の処分場の名前として使う
+    if (!disposer) {
+      const rest = tokens.filter((tok) => !used.has(tok) && !(target && Math.max(overlap(squash(tok), squash(target.siteAddress)), overlap(squash(tok), squash(target.clientName))) > 0));
+      disposer = rest.length ? rest[0] : ((state.settings || {}).defDisposer || '');
+    }
+
+    const res = { type, qty, unit, date: isoOf(day), disposer, target, candidates };
+    res.missing = [!type && 'type', qty == null && 'qty', !target && 'case'].filter(Boolean);
+    return res;
+  }
+
+  // マニフェスト1枚分（画面と同じ形）
+  function manifestFromRecord(r, state, by) {
+    return {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'paper', no: '', date: r.date, type: r.type,
+      qty: String(Math.round(r.qty * 1000) / 1000), carrier: (state.settings || {}).defCarrier || '', disposer: r.disposer || '',
+      reg: '', b2: '', d: '', e: '', via: 'line', lineBy: by || '', lineAt: new Date().toISOString(),
+    };
+  }
+
+  const LINE_HELP = '【カイタイ事務】捨てた記録の送り方\n処分場・現場・ゴミの種類・重さを、空白で区切って送ってください。順番は自由です。\n\n例）ヒラヤマ 住吉区 シバ 3t\n例）住吉 ミンチ 2.4トン 平山\n例）11/8 山田 有筋 4t（日付を付けると、その日の記録になります）\n\n間違えたときは「取消」と送ると、直前の記録を消します。';
+
+  function recordReply(r, state) {
+    const w = WT[r.type] || { name: r.type, unit: 't' };
+    const price = priceFor(state, r.disposer, r.type);
+    const site = (state.settings && (state.settings.sites || []).find((x) => x.name === r.disposer)) ? '' : '（単価が未登録の処分場です）';
+    return `✅ 登録しました\n現場：${caseLabel(r.target)}\n日付：${r.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2')}\nゴミ：${w.name} ${r.qty}${r.unit === 'm3' ? '㎥' : 't'}\n処分場：${r.disposer || '（未入力）'}${site}\n処分代：${price ? '¥' + yen(r.qty * price) + '（単価 ¥' + yen(price) + '）' : '単価未登録'}\n\n間違えたら「取消」と送ってください。`;
+  }
+  function askReply(r) {
+    const parts = [];
+    if (r.missing.includes('type')) parts.push('ゴミの種類（シバ・ガラ・有筋・ミンチ・廃プラ・瓦・石膏 など）');
+    if (r.missing.includes('qty')) parts.push('重さ（例：3t、2.5トン、3000kg）');
+    if (parts.length) return `読み取れなかったものがあります：\n・${parts.join('\n・')}\n\nもう一度、全部まとめて送ってください。\n例）ヒラヤマ 住吉区 シバ 3t`;
+    if (r.missing.includes('case')) {
+      const list = (r.candidates || []).slice(0, 9);
+      if (!list.length) return '現場が見つかりませんでした。カイタイ事務に現場（案件）を登録してから送ってください。';
+      return 'どの現場ですか？ 番号だけ送ってください。\n' + list.map((c, i) => `${i + 1}. ${caseLabel(c)}`).join('\n');
+    }
+    return '';
+  }
+
   // 毎朝の通知に載せる注意をまとめる（画面の「全案件の注意」と同じ基準）
   function collectAlerts(state, date) {
     const now = todayOf(date);
@@ -193,6 +347,7 @@
     WASTE_TYPES, WT, plus3BizDays, manifestChecks,
     LEASE_MODES, lastOfMonth, addMonthsClamp, companyOf, closeOf, closeLabel, closeDate, segEnd, dayCount, mLabel, leaseCalc,
     caseName, collectAlerts, alertMessage,
+    kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, caseLabel, LINE_HELP,
   };
   root.KJCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

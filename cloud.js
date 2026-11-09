@@ -36,6 +36,17 @@
     return out;
   }
 
+  // LINE から入ったマニフェストのうち、この端末にまだないもの（前回の同期以降に増えたもの）を足す
+  function mergeLine(localCase, remoteCase, syncedJ) {
+    let known = new Set();
+    try { known = new Set(((JSON.parse(syncedJ || 'null') || {}).manifests || []).map((m) => m.id)); } catch (_) { /* noop */ }
+    const have = new Set((localCase.manifests || []).map((m) => m.id));
+    const add = (remoteCase.manifests || []).filter((m) => m.via === 'line' && !have.has(m.id) && !known.has(m.id));
+    if (!add.length) return false;
+    localCase.manifests = (localCase.manifests || []).concat(add);
+    return true;
+  }
+
   // ---------- 送る ----------
   async function push() {
     if (!user || !company) return;
@@ -53,6 +64,22 @@
         const i = k.indexOf(':');
         rows.push({ k, del: true, row: { company_id: company.id, kind: k.slice(0, i), id: k.slice(i + 1), data: {}, deleted: true } });
       });
+      // 送る前に：送ろうとしている現場に、LINE から新しい記録が入っていないか確かめて取り込む
+      const caseIds = rows.filter((r) => !r.del && r.row.kind === 'case').map((r) => r.row.id);
+      if (caseIds.length) {
+        const { data: remote } = await sb.from('kj_docs').select('id,data,updated_at').eq('company_id', company.id).eq('kind', 'case').in('id', caseIds);
+        let merged = false;
+        const st = KJApp.getState();
+        (remote || []).forEach((rc) => {
+          const lc = st.cases.find((c) => c.id === rc.id);
+          if (lc && mergeLine(lc, rc.data, meta.synced['case:' + rc.id])) merged = true;
+        });
+        if (merged) {
+          KJApp.replaceState(JSON.parse(JSON.stringify(st)));
+          const fresh = docsOf(KJApp.getState());
+          rows.forEach((r) => { if (!r.del && fresh[r.k]) { r.row.data = fresh[r.k].data; r.j = stable(fresh[r.k].data); } });
+        }
+      }
       if (rows.length) {
         status('保存中…', 'busy');
         const { error } = await sb.from('kj_docs').upsert(rows.map((r) => r.row), { onConflict: 'company_id,kind,id' });
@@ -119,7 +146,11 @@
           if (localJ === remoteJ) { if (remoteJ !== undefined) meta.synced[k] = remoteJ; return; }
           // この端末でまだ送っていない変更がある → この端末を優先（あとで送る）
           const untouched = local ? localJ === meta.synced[k] : !(k in meta.synced);
-          if (!untouched) return;
+          if (!untouched) {
+            // この端末で編集中でも、LINE から入った記録は取り込む（送るときに一緒に送る）
+            if (local && r.kind === 'case' && !r.deleted && mergeLine(local.data, r.data, meta.synced[k])) changed = true;
+            return;
+          }
           if (r.deleted) {
             if (local && r.kind === 'case') { next.cases = next.cases.filter((c) => c.id !== r.id); changed = true; }
             delete meta.synced[k];
@@ -197,6 +228,7 @@
       } else if (meta.companyId !== company.id) { meta.companyId = company.id; meta.synced = {}; meta.lastPull = null; saveMeta(); }
       $('#companyOverlay').hidden = true;
       renderCompanyBox(list);
+      renderLineIn();
       await pull({ initial: !meta.lastPull });
       if (migrated) await push(); // 引っ越し中に送れなかった入力があれば送る
     } catch (e) {
@@ -225,6 +257,48 @@
     if (!code) return;
     try { sessionStorage.setItem(INVITE_KEY, code); } catch (_) { /* noop */ }
     await chooseCompany();
+  });
+
+  // ---------- LINEで入力（連携番号・連携一覧） ----------
+  const botId = cfg.lineBotId || '';
+  async function renderLineIn() {
+    if (!botId) return;
+    const box = $('#lineInBox'); box.hidden = false;
+    const url = 'https://line.me/R/ti/p/' + encodeURIComponent(botId);
+    $('#lineAddLink').href = url; $('#lineAddLink').textContent = botId + '（押すとLINEが開きます）';
+    $('#lineDriverArea').hidden = company.role !== 'owner';
+    const { data } = await sb.from('kj_line_users').select('line_user_id, user_id, role, display_name, linked_at').eq('company_id', company.id).order('linked_at');
+    const canRemove = (u) => company.role === 'owner' || u.user_id === user.id;
+    $('#lineUserList').innerHTML = (data || []).map((u) => `<li>${escapeHtml(u.display_name || '（名前なし）')} <span class="chip">${u.role === 'driver' ? '運転手' : '社員'}</span>${u.user_id === user.id ? ' <span class="chip">あなた</span>' : ''}${canRemove(u) ? ` <button type="button" class="btn ghost small" data-unlink="${escapeHtml(u.line_user_id)}">連携を外す</button>` : ''}</li>`).join('') || '<li class="empty">まだありません</li>';
+  }
+  async function issueCode(role) {
+    const label = role === 'driver' ? $('#lineDriverName').value.trim() : null;
+    if (role === 'driver' && !label) { $('#lineInMsg').textContent = '運転手さんの名前を入れてください（一覧に出す名前です）。'; return; }
+    const { data, error } = await sb.rpc('kj_create_line_code', { p_company: company.id, p_role: role, p_label: label });
+    if (error) { $('#lineInMsg').textContent = '連携番号を出せませんでした：' + error.message; return; }
+    const url = 'https://line.me/R/ti/p/' + encodeURIComponent(botId);
+    const msg = role === 'driver'
+      ? `${label}へ\nカイタイ事務の公式LINEを友だち追加して、この番号を送ってください（30分以内）。\n${url}\n連携番号：${data}`
+      : '';
+    $('#lineCodeOut').hidden = false;
+    $('#lineCodeOut').innerHTML = `<div class="code">${data}</div><div class="hint">30分以内に、公式LINEにこの6桁を送ってください。</div>`
+      + (msg ? `<textarea id="lineShareText" rows="4" readonly>${escapeHtml(msg)}</textarea><button type="button" class="btn ghost small" id="lineShareCopy">運転手さんに送る文をコピー</button>` : '');
+    $('#lineInMsg').textContent = '';
+  }
+  $('#lineCodeSelf').addEventListener('click', () => issueCode('member'));
+  $('#lineCodeDriver').addEventListener('click', () => issueCode('driver'));
+  $('#lineCodeOut').addEventListener('click', async (e) => {
+    if (e.target.id !== 'lineShareCopy') return;
+    const el = $('#lineShareText');
+    try { await navigator.clipboard.writeText(el.value); $('#lineInMsg').textContent = 'コピーしました。LINEなどで運転手さんに送ってください。'; }
+    catch (_) { el.select(); $('#lineInMsg').textContent = '選択しました。コピーしてください。'; }
+  });
+  $('#lineUserList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-unlink]'); if (!b) return;
+    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'もう一度押すと外す'; setTimeout(() => { b.dataset.armed = ''; b.textContent = '連携を外す'; }, 3000); return; }
+    const { error } = await sb.from('kj_line_users').delete().eq('line_user_id', b.dataset.unlink);
+    $('#lineInMsg').textContent = error ? '外せませんでした：' + error.message : '連携を外しました。';
+    renderLineIn();
   });
 
   // 設定画面の「会社」欄
@@ -318,6 +392,7 @@
     $('#cloudBox').hidden = true;
     $('#lineBox').hidden = true;
     $('#companyBox').hidden = true;
+    $('#lineInBox').hidden = true;
     showLogin();
   });
 
