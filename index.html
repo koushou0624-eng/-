@@ -8,7 +8,7 @@
 </head>
 <body>
 <header class="topbar no-print">
-  <div class="brand">カイタイ事務 <span class="tag">試作版</span></div>
+  <div class="brand">カイタイ事務 <span class="tag">試作版</span> <span id="syncStatus" class="sync" hidden></span></div>
   <div class="case-switch">
     <select id="caseSelect" aria-label="案件を選択"></select>
     <button id="newCase" class="btn">＋ 新規案件</button>
@@ -30,6 +30,17 @@
   <button data-tab="certificate">⑥ 取毀証明書</button>
   <button data-tab="settings">⚙ 会社・単価設定</button>
 </nav>
+
+<div id="loginOverlay" class="login" hidden>
+  <form id="loginForm" class="login-card">
+    <h1>カイタイ事務</h1>
+    <p class="hint">メールアドレスとパスワードでログインしてください。</p>
+    <label for="loginEmail">メールアドレス<input id="loginEmail" type="email" autocomplete="username" required></label>
+    <label for="loginPassword">パスワード<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+    <button class="btn" type="submit">ログイン</button>
+    <p id="loginError" class="login-error" role="alert"></p>
+  </form>
+</div>
 
 <main>
   <!-- ① 案件入力 -->
@@ -231,6 +242,12 @@
         <label>目標粗利率（％）<input name="targetMargin" type="number"></label>
       </fieldset>
     </form>
+    <fieldset id="cloudBox" class="cloudbox" hidden>
+      <legend>アカウント</legend>
+      <p>ログイン中：<b id="cloudEmail"></b></p>
+      <p class="hint">入力した内容は自動でネットに保存され、ほかの端末でも同じデータが見られます。</p>
+      <button type="button" id="logoutBtn" class="btn ghost">ログアウト</button>
+    </fieldset>
     <p><button id="resetAll" class="btn ghost">すべてのデータを消して最初の状態に戻す</button></p>
     <p class="hint">単価は初期値として一般的な相場の目安を入れています。必ず自社の単価に書き換えてください。</p>
     <p><button id="exportBtn" class="btn ghost">データを書き出し（バックアップ）</button>
@@ -238,7 +255,10 @@
   </section>
 </main>
 
+<script src="vendor/supabase-2.45.4.js"></script>
+<script src="config.js"></script>
 <script src="core.js"></script>
 <script src="app.js"></script>
+<script src="cloud.js"></script>
 </body>
 </html>

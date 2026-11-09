@@ -54,27 +54,35 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // ---------- 保存 ----------
+  // 保存されていた設定に、新しく増えた項目の初期値を足す
+  function normalizeSettings(s0) {
+    let old = s0 || {};
+    if ((old.wasteVer || 1) < 2) old = { ...old, alwaysTypes: DEFAULT_SETTINGS.alwaysTypes, wasteVer: 2 };
+    const s = { ...DEFAULT_SETTINGS, ...old };
+    // 処分単価：古いデータの「コンクリート塊・木くず・混合廃棄物」の単価を引き継ぐ
+    const legacy = {};
+    if (old.cDispConcrete != null) legacy.concrete = old.cDispConcrete;
+    if (old.cDispWood != null) legacy.wood = old.cDispWood;
+    if (old.cDispMixed != null) legacy.mixed = old.cDispMixed;
+    s.dispPrices = { ...DEFAULT_SETTINGS.dispPrices, ...(old.dispPrices ? {} : legacy), ...(old.dispPrices || {}) };
+    return s;
+  }
   function load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const d = JSON.parse(raw);
-        if ((d.settings?.wasteVer || 1) < 2) { d.settings = { ...d.settings, alwaysTypes: DEFAULT_SETTINGS.alwaysTypes, wasteVer: 2 }; }
-        const old = d.settings || {};
-        d.settings = { ...DEFAULT_SETTINGS, ...old };
-        // 処分単価：古いデータの「コンクリート塊・木くず・混合廃棄物」の単価を引き継ぐ
-        const legacy = {};
-        if (old.cDispConcrete != null) legacy.concrete = old.cDispConcrete;
-        if (old.cDispWood != null) legacy.wood = old.cDispWood;
-        if (old.cDispMixed != null) legacy.mixed = old.cDispMixed;
-        d.settings.dispPrices = { ...DEFAULT_SETTINGS.dispPrices, ...(old.dispPrices ? {} : legacy), ...(old.dispPrices || {}) };
+        d.settings = normalizeSettings(d.settings);
         if (d.cases?.length) return d;
       }
     } catch (_) { /* 保存領域が使えない場合は初期状態 */ }
     const first = newCase();
     return { settings: { ...DEFAULT_SETTINGS }, cases: [first], currentId: first.id };
   }
-  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) { /* noop */ } }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) { /* noop */ }
+    if (window.KJCloud) window.KJCloud.onLocalSave(); // ログインしていれば Supabase にも送る
+  }
 
   function newCase() {
     const d = new Date();
@@ -1112,6 +1120,21 @@
   });
 
   fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+
+  // クラウド同期（cloud.js）から使う窓口
+  window.KJApp = {
+    getState: () => state,
+    replaceState(next) {
+      next.settings = normalizeSettings(next.settings);
+      if (!Array.isArray(next.cases) || !next.cases.length) next.cases = [newCase()];
+      next.cases.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      if (!next.cases.some((c) => c.id === next.currentId)) next.currentId = next.cases[0].id;
+      state = next;
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) { /* noop */ }
+      fillForm(caseForm, cur()); fillForm(settingsForm, state.settings);
+      renderAlwaysTypes(); renderDispPrices(); renderLeasePresets(); renderLeaseCompanies(); renderSites(); renderAll();
+    },
+  };
 
   // 日付が変わったら描き直す（開いたままでも、借りている途中のリースや期限が今日の日付で計算される）
   let shownDay = todayIso();
