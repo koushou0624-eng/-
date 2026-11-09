@@ -19,6 +19,15 @@
     dispPrices: { wood: 12000, concrete: 3000, concreteR: 4500, mixed: 25000, plastic: 35000, glass: 10000, gypsum: 20000, asphalt: 3000, metal: 5000, asb: 30000, asbsp: 80000 },
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
     defCarrier: '', defDisposer: '',
+    // リースの機械：日額・月極・この日数を超えたら月極・回送費（往復）。相場の目安
+    leasePresets: [
+      { name: 'バックホー 0.25㎥（ユンボ）', daily: 15000, monthly: 250000, th: 20, transport: 60000 },
+      { name: 'バックホー 0.45㎥（ユンボ）', daily: 25000, monthly: 400000, th: 20, transport: 80000 },
+      { name: 'ミニユンボ 0.1㎥', daily: 8000, monthly: 130000, th: 20, transport: 30000 },
+      { name: '4tダンプ', daily: 12000, monthly: 180000, th: 18, transport: 0 },
+      { name: '2tダンプ', daily: 8000, monthly: 120000, th: 18, transport: 0 },
+    ],
+    sites: [], // 処分場ごとの単価 { id, name, prices: { 種類: 円 } }
     alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
@@ -88,7 +97,7 @@
       structure: 'wood', floors: 2, floorArea: '', use: '専用住宅', builtYear: '',
       noHeavy: false, narrowRoad: false, debrisM3: 0, blockM: 0, concreteM2: 0, trees: 0,
       asbestos: 'none', asbestosM2: 0, startDate: '', endDate: '',
-      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '', manifests: [], expenses: [],
+      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '', manifests: [], expenses: [], leases: [],
     };
   }
 
@@ -318,24 +327,26 @@
 
   // 実績（マニフェストの処分代・経費）で見た利益
   function actualHtml(c, r) {
-    const disp = dispSummary(c), exp = expenseSummary(c);
-    if (!disp.total && !exp.total) {
-      return '<h2>実際の利益（実績）</h2><p class="hint">「🚛 マニフェスト」に数量、「⛽ 経費」に消耗品・高速代・燃料費を入れると、見込みと実際の利益を比べられます。</p>';
+    const disp = dispSummary(c), exp = expenseSummary(c), ls = leaseSummary(c);
+    if (!disp.total && !exp.total && !ls.total) {
+      return '<h2>実際の利益（実績）</h2><p class="hint">「🚛 マニフェスト」に数量、「⛽ 経費」に消耗品・高速代・燃料費、「🚜 リース」に借りた機械を入れると、見込みと実際の利益を比べられます。</p>';
     }
+    const estMachine = r.rows.filter((x) => x.name.startsWith('重機') || x.name.startsWith('ダンプ運搬')).reduce((a, x) => a + x.amount, 0);
     const estDisp = r.rows.filter((x) => x.name.startsWith('処分費')).reduce((a, x) => a + x.amount, 0);
     const estSupply = r.rows.filter((x) => x.name.startsWith('養生シート')).reduce((a, x) => a + x.amount, 0);
-    const actCost = Math.round(r.cost - (disp.total ? estDisp : 0) + disp.total - (exp.total ? estSupply : 0) + exp.total);
+    const actCost = Math.round(r.cost - (disp.total ? estDisp : 0) + disp.total - (exp.total ? estSupply : 0) + exp.total - (ls.total ? estMachine : 0) + ls.total);
     const profit = r.sales - actCost, margin = r.sales > 0 ? profit / r.sales * 100 : 0;
     const row = (name, est, act, note = '') => `<tr><td>${name}${note ? `<div class="sub">${note}</div>` : ''}</td><td class="num">${est == null ? '—' : '¥' + yen(est)}</td><td class="num">${act == null ? '—' : '¥' + yen(act)}</td></tr>`;
     return `
       <h2>実際の利益（実績）</h2>
       <div class="table-wrap"><table class="cost"><thead><tr><th>項目</th><th class="num">見込み</th><th class="num">実績</th></tr></thead><tbody>
         ${row('処分代', estDisp, disp.total || null, disp.total ? `マニフェスト ${disp.count}枚分` : 'マニフェスト未入力（見込みのまま計算）')}
+        ${row('リース（重機・ダンプ）', estMachine, ls.total || null, ls.total ? `${ls.count}台分（回送費込み）` : 'リース未入力（見込みのまま計算）')}
         ${EXPENSE_CATS.map((k) => row(`経費：${k}`, k === '消耗品' ? estSupply : null, exp.byCat[k] || null)).join('')}
-        ${row('原価 合計', r.cost, actCost, '人工・重機・ダンプ・ガードマンは見込みのまま')}
+        ${row('原価 合計', r.cost, actCost, ls.total ? '人工・ガードマンは見込みのまま' : '人工・重機・ダンプ・ガードマンは見込みのまま')}
         <tr><th>粗利（利益）</th><td class="num">¥${yen(r.profit)}（${r.margin.toFixed(1)}%）</td><td class="num"><b class="${profit < 0 ? 'neg' : ''}">¥${yen(profit)}（${margin.toFixed(1)}%）</b></td></tr>
       </tbody></table></div>
-      <p class="hint">燃料費・高速代は見込みでは重機・ダンプの費用に含めているため、実績の利益は少し低めに出ます。</p>`;
+      <p class="hint">${ls.total ? 'リースを入れた場合、見込みの重機・ダンプ代（燃料込み）をリース代に置き換えて計算します。' : '燃料費・高速代は見込みでは重機・ダンプの費用に含めているため、実績の利益は少し低めに出ます。'}</p>`;
   }
 
   // 日曜を休工日として、実働日を日付に割り当てる
@@ -426,14 +437,28 @@
 
   // ---------- 処分代 ----------
   const dispPrice = (type) => num((state.settings.dispPrices || {})[type]);
-  const unitPriceOf = (m) => (m.price !== '' && m.price != null ? num(m.price) : dispPrice(m.type));
+  const siteByName = (name) => (state.settings.sites || []).find((x) => x.name && x.name.trim() === String(name || '').trim());
+  const sitePrice = (site, type) => { const v = site && site.prices ? site.prices[type] : ''; return v === '' || v == null ? null : num(v); };
+  // 単価の出どころ（手入力していないとき）
+  function defaultPriceOf(m) {
+    const site = siteByName(m.disposer), sp = sitePrice(site, m.type);
+    return sp != null ? { price: sp, label: `${site.name}の単価` } : { price: dispPrice(m.type), label: '標準' };
+  }
+  const unitPriceOf = (m) => (m.price !== '' && m.price != null ? num(m.price) : defaultPriceOf(m).price);
+  // その種類で一番安い処分場
+  function cheapestSite(type) {
+    let best = null;
+    (state.settings.sites || []).forEach((st) => { const p = sitePrice(st, type); if (p != null && st.name && (!best || p < best.price)) best = { name: st.name, price: p }; });
+    return best;
+  }
   const dispOf = (m) => num(m.qty) * unitPriceOf(m);
   const mcostHtml = (m) => (num(m.qty) > 0 ? `処分代 <b>¥${yen(dispOf(m))}</b>` : '');
   function gsumHtml(c, type) {
     const w = WT[type], list = manifestsOf(c).filter((m) => m.type === type);
     const total = list.reduce((a, m) => a + num(m.qty), 0), cost = list.reduce((a, m) => a + dispOf(m), 0), est = estimateFor(c, type);
     const open = list.filter((m) => manifestChecks(m).some((x) => x.state === 'late')).length;
-    return `${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>・処分代 <b>¥${yen(cost)}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}`;
+    const best = cheapestSite(type);
+    return `${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>・処分代 <b>¥${yen(cost)}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${best ? `<br><span class="best">一番安い処分場：${esc(best.name)} ¥${yen(best.price)}/${w.unit}</span>` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}`;
   }
   function dispSummary(c) {
     const ms = manifestsOf(c).filter((m) => num(m.qty) > 0), by = {};
@@ -463,7 +488,7 @@
           <label>交付番号<input data-f="no" value="${esc(m.no)}" placeholder="例 1234567890"></label>
           <label>交付日（搬出日）<input data-f="date" type="date" value="${esc(m.date)}"></label>
           <label>数量（${WT[m.type]?.unit || 't'}）<input data-f="qty" type="number" min="0" step="0.01" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"></label>
-          <label>処分単価（円/${WT[m.type]?.unit || 't'}）<input data-f="price" type="number" min="0" value="${esc(m.price ?? '')}" placeholder="標準 ${yen(dispPrice(m.type))}"></label>
+          <label>処分単価（円/${WT[m.type]?.unit || 't'}）<input data-f="price" type="number" min="0" value="${esc(m.price ?? '')}" placeholder="${esc(defaultPriceOf(m).label)} ${yen(defaultPriceOf(m).price)}"></label>
           <label>収集運搬業者<input data-f="carrier" list="carrierList" value="${esc(m.carrier)}"></label>
           <label>処分業者<input data-f="disposer" list="disposerList" value="${esc(m.disposer)}"></label>
           ${m.kind === 'electronic' ? `<label>JWNET登録日<input data-f="reg" type="date" value="${esc(m.reg)}"></label>` : ''}
@@ -495,7 +520,7 @@
     const rare = WASTE_TYPES.filter((w) => !shown.includes(w.id));
     $('#rareType').innerHTML = rare.length ? rare.map((w) => `<option value="${w.id}">${esc(w.name)}（${esc(w.legal)}）</option>`).join('') : '<option value="">（すべて表示済み）</option>';
     $('#addRare').disabled = !rare.length;
-    const names = (k) => [...new Set(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k])).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
+    const names = (k) => [...new Set((k === 'disposer' ? (state.settings.sites || []).map((x) => x.name) : []).concat(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k]))).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
     $('#carrierList').innerHTML = names('carrier').map((n) => `<option value="${esc(n)}">`).join('');
     $('#disposerList').innerHTML = names('disposer').map((n) => `<option value="${esc(n)}">`).join('');
   }
@@ -568,6 +593,110 @@
 
   function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); }
   function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
+
+  // ---------- リース ----------
+  const leasesOf = (c) => (Array.isArray(c.leases) ? c.leases : (c.leases = []));
+  const LEASE_BLOCK = 30; // 30日ごとに1か月として数える
+
+  // 日割り → 決めた日数を超えたら月極。30日を超える分は次の1か月として同じルールで計算
+  function leaseCalc(l) {
+    const daily = num(l.daily), monthly = num(l.monthly), th = Math.max(1, num(l.th) || 1);
+    const extra = num(l.transport) + num(l.other);
+    if (!l.start) return { days: 0, cost: extra, rent: 0, parts: [], state: 'none' };
+    const endIso = l.end || todayIso();
+    const days = Math.round((new Date(endIso + 'T00:00:00') - new Date(l.start + 'T00:00:00')) / 86400000) + 1;
+    if (days <= 0) return { days: 0, cost: extra, rent: 0, parts: [], state: 'bad' };
+    const full = Math.floor(days / LEASE_BLOCK), rem = days - full * LEASE_BLOCK;
+    const remMonthly = rem > th;
+    const rent = full * monthly + (rem === 0 ? 0 : remMonthly ? monthly : rem * daily);
+    const parts = [];
+    if (full) parts.push(`月極 ${full}か月 × ¥${yen(monthly)}`);
+    if (rem) parts.push(remMonthly ? `${rem}日（${th}日超え → 月極）¥${yen(monthly)}` : `日割り ${rem}日 × ¥${yen(daily)}`);
+    const blockStart = addDays(l.start, full * LEASE_BLOCK);
+    const res = { days, rent, cost: rent + extra, parts, full, rem, th, ongoing: !l.end, state: 'ok' };
+    if (rem && !remMonthly) {
+      res.toSwitch = th - rem + 1; // あと何日で月極になるか
+      res.lastDaily = addDays(isoOf(blockStart), th - 1); // 日割りで済む最後の日
+      if (res.ongoing && res.toSwitch <= 3) res.state = 'soon';
+    }
+    if (rem && remMonthly) {
+      res.paidUntil = addDays(isoOf(blockStart), LEASE_BLOCK - 1); // 月極で追加料金なしの最終日
+      if (res.ongoing) res.state = 'monthly';
+    }
+    // 日割りが月極を超えている（あと少し借りれば月極になって安くなる）
+    if (rem && !remMonthly && monthly > 0 && rem * daily > monthly) {
+      res.tip = `今の日割り（¥${yen(rem * daily)}）は月極（¥${yen(monthly)}）より高くなっています。あと${res.toSwitch}日借りると月極に切り替わり、¥${yen(rem * daily - monthly)}安くなります。`;
+    }
+    return res;
+  }
+  function leaseSummary(c) {
+    const ls = leasesOf(c);
+    return { total: Math.round(ls.reduce((a, l) => a + leaseCalc(l).cost, 0)), count: ls.length };
+  }
+  function leaseCalcHtml(l) {
+    const r = leaseCalc(l);
+    if (!l.start) return '<span class="chip">借りた日を入れると金額を計算します</span>';
+    if (r.state === 'bad') return '<span class="chip late">返した日が借りた日より前です</span>';
+    const pct = Math.min(100, Math.round((r.rem || (r.full ? LEASE_BLOCK : 0)) / Math.max(1, num(l.th)) * 100));
+    let note = '';
+    if (r.toSwitch != null) note = `<span class="chip ${r.state === 'soon' ? 'soon' : 'wait'}">月極まで あと${r.toSwitch}日</span> <span class="sub">${!r.ongoing ? '日割りで計算' : r.tip ? `${fmtDate(addDays(isoOf(r.lastDaily), 1))}から月極` : `${fmtDate(r.lastDaily)}までに返せば日割りで済みます`}</span>`;
+    else if (r.paidUntil) note = `<span class="chip done">月極に切替済み</span> <span class="sub">${r.ongoing ? `${fmtDate(r.paidUntil)}までは追加料金なし` : '月極で計算'}</span>`;
+    return `
+      <div class="lsum"><span>使用 <b>${r.days}日</b>${r.ongoing ? '（借りている途中・今日まで）' : ''}</span><span>リース代 <b>¥${yen(r.cost)}</b></span></div>
+      <div class="lbar"><div style="width:${r.rem && r.rem <= num(l.th) ? pct : 100}%" class="${r.paidUntil ? 'm' : ''}"></div></div>
+      <div class="sub">${r.parts.join(' ＋ ')}${num(l.transport) ? ` ＋ 回送費 ¥${yen(l.transport)}` : ''}${num(l.other) ? ` ＋ その他 ¥${yen(l.other)}` : ''}</div>
+      <div>${note}</div>
+      ${r.tip ? `<div class="sub tipline">💡 ${r.tip}</div>` : ''}`;
+  }
+  function renderLeaseList(c) {
+    const ls = leasesOf(c);
+    $('#leaseList').innerHTML = ls.length ? ls.map((l) => `
+      <div class="mcard" data-lid="${l.id}">
+        <div class="mhead"><b>${esc(l.name || '（名前なし）')}</b><span class="flex1"></span><button class="btn ghost small" data-ldel="${l.id}">削除</button></div>
+        <div class="lcalc" id="lcalc-${l.id}">${leaseCalcHtml(l)}</div>
+        <div class="mgrid">
+          <label>機械の名前<input data-lf="name" value="${esc(l.name)}"></label>
+          <label>リース会社<input data-lf="company" value="${esc(l.company)}" placeholder="〇〇リース"></label>
+          <label>借りた日<input data-lf="start" type="date" value="${esc(l.start)}"></label>
+          <label>返した日（借りている途中は空欄）<input data-lf="end" type="date" value="${esc(l.end)}"></label>
+          <label>日額（円）<input data-lf="daily" type="number" min="0" value="${esc(l.daily)}"></label>
+          <label>月極料金（円）<input data-lf="monthly" type="number" min="0" value="${esc(l.monthly)}"></label>
+          <label>この日数を超えたら月極<input data-lf="th" type="number" min="1" value="${esc(l.th)}"></label>
+          <label>回送費（円・往復）<input data-lf="transport" type="number" min="0" value="${esc(l.transport)}"></label>
+          <label>その他（補償料など）<input data-lf="other" type="number" min="0" value="${esc(l.other ?? '')}"></label>
+        </div>
+      </div>`).join('') : '<p class="empty">この案件で借りた機械はまだありません。上の「借りた機械を追加」から選んでください。</p>';
+    const ps = state.settings.leasePresets || [];
+    $('#leasePreset').innerHTML = ps.map((p, i) => `<option value="${i}">${esc(p.name)}（日額¥${yen(p.daily)}／月極¥${yen(p.monthly)}／${num(p.th)}日超えで月極）</option>`).join('') + '<option value="custom">その他（自分で入力）</option>';
+  }
+  function renderLeaseTotal(c) {
+    const ls = leasesOf(c);
+    const rows = ls.map((l) => { const r = leaseCalc(l); return `<tr><td>${esc(l.name)}</td><td class="num">${r.days}日</td><td>${r.paidUntil || r.full ? '月極' : r.days ? '日割り' : '—'}</td><td class="num">¥${yen(r.cost)}</td></tr>`; }).join('');
+    const total = leaseSummary(c).total;
+    $('#leaseTotal').innerHTML = ls.length ? `
+      <h2>リース代の合計</h2>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>機械</th><th class="num">使用日数</th><th>計算</th><th class="num">リース代（回送費込み）</th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td></tr></tfoot></table></div>
+      <p class="hint">30日ごとに1か月として数えています。リース会社の締め方（暦の月単位など）と違う場合は、日数や金額を調整してください。</p>` : '';
+  }
+  // 全案件の注意（月極が近い・月極になった）
+  function renderLeaseAlerts() {
+    const items = [];
+    state.cases.forEach((c) => leasesOf(c).forEach((l) => {
+      const r = leaseCalc(l);
+      const who = `<button class="link" data-goto="${c.id}">${esc(caseName(c))}</button> ${esc(l.name)}`;
+      if (r.state === 'soon' && r.tip) items.push({ o: 0, h: `<li>${who} — <b>あと${r.toSwitch}日で月極に切り替わります。</b>${r.tip}</li>` });
+      else if (r.state === 'soon') items.push({ o: 0, h: `<li>${who} — <b>あと${r.toSwitch}日で月極に切り替わります。</b>返す予定なら${fmtDate(r.lastDaily)}までに返せば日割り（今の時点で¥${yen(r.rent)}）で済みます。</li>` });
+      else if (r.state === 'monthly') items.push({ o: 1, h: `<li>${who} — 月極に切り替わりました（使用${r.days}日）。${fmtDate(r.paidUntil)}までは追加料金なしで使えます。</li>` });
+      else if (r.tip && r.ongoing) items.push({ o: 2, h: `<li>${who} — ${r.tip}</li>` });
+    }));
+    items.sort((a, b) => a.o - b.o);
+    const soon = items.filter((x) => x.o === 0).length;
+    $('#leaseAlerts').innerHTML = `
+      <div class="alertbox ${soon ? 'mid' : 'good'}"><b>全案件のリース：</b>${soon ? `もうすぐ月極に切り替わる機械 ${soon}台` : '月極が近い機械はありません'}
+        ${items.length ? `<ul>${items.map((x) => x.h).join('')}</ul>` : ''}</div>`;
+  }
+  function renderLease(c) { renderLeaseAlerts(); renderLeaseList(c); renderLeaseTotal(c); }
 
   // ---------- 経費 ----------
   const expensesOf = (c) => (Array.isArray(c.expenses) ? c.expenses : (c.expenses = []));
@@ -693,7 +822,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -721,6 +850,7 @@
     else {
       const ch = $('#chips-' + m.id); if (ch) ch.innerHTML = chipsHtml(m);
       const mc = $('#mcost-' + m.id); if (mc) mc.innerHTML = mcostHtml(m);
+      const pi = card.querySelector('[data-f=price]'); if (pi) { const d = defaultPriceOf(m); pi.placeholder = `${d.label} ${yen(d.price)}`; }
       const gs = $('#gsum-' + m.type); if (gs) gs.innerHTML = gsumHtml(cur(), m.type);
     }
     refreshManifestSummary(cur());
@@ -750,6 +880,104 @@
     const c = cur(); c.extraTypes = [...new Set([...(c.extraTypes || []), type])]; save(); renderAll();
     document.querySelector(`.mgroup[data-type="${type}"]`)?.scrollIntoView({ block: 'center' });
   });
+  // リースの追加・入力・削除
+  $('#addLease').addEventListener('click', () => {
+    const c = cur(), v = $('#leasePreset').value, p = v === 'custom' ? null : (state.settings.leasePresets || [])[+v];
+    const l = { id: uid(), name: p ? p.name : '', company: '', start: c.startDate && c.startDate <= todayIso() ? c.startDate : todayIso(), end: '',
+      daily: p ? p.daily : '', monthly: p ? p.monthly : '', th: p ? p.th : 20, transport: p ? p.transport : '', other: '' };
+    leasesOf(c).push(l); save(); renderAll();
+    document.querySelector(`[data-lid="${l.id}"]`)?.scrollIntoView({ block: 'center' });
+  });
+  $('#leaseList').addEventListener('input', (e) => {
+    const el = e.target, card = el.closest('[data-lid]'); if (!card || !el.dataset.lf) return;
+    const l = leasesOf(cur()).find((x) => x.id === card.dataset.lid); if (!l) return;
+    l[el.dataset.lf] = el.value; save();
+    const box = $('#lcalc-' + l.id); if (box) box.innerHTML = leaseCalcHtml(l);
+    if (el.dataset.lf === 'name') card.querySelector('.mhead b').textContent = l.name || '（名前なし）';
+    renderLeaseAlerts(); renderLeaseTotal(cur()); renderProfit(cur(), state.settings);
+  });
+  const leaseDelArmed = {};
+  $('#leaseList').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ldel]'); if (!b) return;
+    const id = b.dataset.ldel;
+    if (!leaseDelArmed[id]) { b.textContent = 'もう一度押すと削除'; leaseDelArmed[id] = setTimeout(() => { b.textContent = '削除'; delete leaseDelArmed[id]; }, 3000); return; }
+    clearTimeout(leaseDelArmed[id]); delete leaseDelArmed[id];
+    const c = cur(); c.leases = leasesOf(c).filter((x) => x.id !== id); save(); renderAll();
+  });
+  $('#leaseAlerts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-goto]'); if (!b) return;
+    state.currentId = b.dataset.goto; save(); fillForm(caseForm, cur()); renderAll();
+  });
+  // 設定：処分場ごとの単価
+  function renderSites() {
+    const sites = state.settings.sites || [];
+    $('#sites').innerHTML = sites.map((st) => `
+      <div class="site" data-sid="${st.id}">
+        <div class="site-head"><label class="pname">処分場の名前<input data-sf="name" value="${esc(st.name)}" placeholder="〇〇リサイクルセンター"></label>
+          <button type="button" class="btn ghost small" data-sdel="${st.id}">削除</button></div>
+        <div class="disp-grid">${WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-sp="${w.id}" value="${esc(st.prices?.[w.id] ?? '')}" placeholder="受け入れなし／標準 ${yen(dispPrice(w.id))}"></label>`).join('')}</div>
+      </div>`).join('') || '<p class="empty">登録された処分場はありません。</p>';
+    renderSiteCompare();
+  }
+  function renderSiteCompare() {
+    const sites = (state.settings.sites || []).filter((x) => x.name);
+    if (sites.length < 2) { $('#siteCompare').innerHTML = sites.length ? '<p class="hint">処分場を2つ以上登録すると、種類ごとに一番安い処分場が分かります。</p>' : ''; return; }
+    const rows = WASTE_TYPES.map((w) => {
+      const ps = sites.map((st) => sitePrice(st, w.id)); if (ps.every((p) => p == null)) return '';
+      const min = Math.min(...ps.filter((p) => p != null));
+      return `<tr><td>${esc(w.name)}</td>${ps.map((p) => `<td class="num ${p === min ? 'cheap' : ''}">${p == null ? '—' : '¥' + yen(p)}</td>`).join('')}</tr>`;
+    }).join('');
+    $('#siteCompare').innerHTML = `<h3 class="sc-title">処分場の単価くらべ（緑が一番安い）</h3>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>種類</th>${sites.map((st) => `<th class="num">${esc(st.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  $('#sites').addEventListener('input', (e) => {
+    const box = e.target.closest('[data-sid]'); if (!box) return;
+    const sites = (state.settings.sites || []).map((x) => ({ ...x, prices: { ...(x.prices || {}) } }));
+    const st = sites.find((x) => x.id === box.dataset.sid); if (!st) return;
+    if (e.target.dataset.sf === 'name') st.name = e.target.value;
+    if (e.target.dataset.sp) st.prices[e.target.dataset.sp] = e.target.value;
+    state.settings.sites = sites; save(); renderSiteCompare(); renderAll();
+  });
+  $('#sites').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sdel]'); if (!b) return;
+    state.settings.sites = (state.settings.sites || []).filter((x) => x.id !== b.dataset.sdel); save(); renderSites(); renderAll();
+  });
+  $('#addSite').addEventListener('click', () => {
+    state.settings.sites = [...(state.settings.sites || []), { id: uid(), name: '', prices: {} }]; save(); renderSites();
+    $('#sites .site:last-child [data-sf=name]')?.focus();
+  });
+  renderSites();
+
+  // 設定：よく借りる機械
+  function renderLeasePresets() {
+    const ps = state.settings.leasePresets || [];
+    $('#leasePresets').innerHTML = ps.map((p, i) => `
+      <div class="preset" data-pi="${i}">
+        <label class="pname">機械の名前<input data-pf="name" value="${esc(p.name)}"></label>
+        <label>日額<input data-pf="daily" type="number" min="0" value="${esc(p.daily)}"></label>
+        <label>月極<input data-pf="monthly" type="number" min="0" value="${esc(p.monthly)}"></label>
+        <label>超えたら月極（日）<input data-pf="th" type="number" min="1" value="${esc(p.th)}"></label>
+        <label>回送費（往復）<input data-pf="transport" type="number" min="0" value="${esc(p.transport)}"></label>
+        <button type="button" class="btn ghost small" data-pdel="${i}">削除</button>
+      </div>`).join('') || '<p class="empty">登録された機械はありません</p>';
+  }
+  $('#leasePresets').addEventListener('input', (e) => {
+    const row = e.target.closest('[data-pi]'), f = e.target.dataset.pf; if (!row || !f) return;
+    const ps = (state.settings.leasePresets || []).map((p) => ({ ...p }));
+    ps[+row.dataset.pi][f] = f === 'name' ? e.target.value : e.target.value === '' ? '' : num(e.target.value);
+    state.settings.leasePresets = ps; save(); renderLeaseList(cur());
+  });
+  $('#leasePresets').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pdel]'); if (!b) return;
+    state.settings.leasePresets = (state.settings.leasePresets || []).filter((_, i) => i !== +b.dataset.pdel); save(); renderLeasePresets(); renderLeaseList(cur());
+  });
+  $('#addPreset').addEventListener('click', () => {
+    state.settings.leasePresets = [...(state.settings.leasePresets || []), { name: '', daily: '', monthly: '', th: 20, transport: '' }];
+    save(); renderLeasePresets(); renderLeaseList(cur());
+    $('#leasePresets .preset:last-child [data-pf=name]')?.focus();
+  });
+  renderLeasePresets();
+
   // 経費の追加・削除
   $('#expenseForm').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -802,7 +1030,7 @@
     if (!resetArmed) { btn.textContent = 'もう一度押すと全データを消します'; resetArmed = setTimeout(() => { btn.textContent = 'すべてのデータを消して最初の状態に戻す'; resetArmed = null; }, 4000); return; }
     clearTimeout(resetArmed); resetArmed = null; btn.textContent = 'すべてのデータを消して最初の状態に戻す';
     try { localStorage.removeItem(STORE_KEY); } catch (_) { /* noop */ }
-    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAlwaysTypes(); renderDispPrices(); renderAll();
+    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAlwaysTypes(); renderDispPrices(); renderLeasePresets(); renderSites(); renderAll();
     $('#tabs button[data-tab=input]').click();
   });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });

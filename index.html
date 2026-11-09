@@ -24,6 +24,7 @@
   <button data-tab="process">📅 工程表</button>
   <button data-tab="manifest">🚛 マニフェスト</button>
   <button data-tab="expense">⛽ 経費</button>
+  <button data-tab="lease">🚜 リース</button>
   <button data-tab="recycle">④ リサイクル法 届出下書き</button>
   <button data-tab="greeting">⑤ 近隣挨拶文</button>
   <button data-tab="certificate">⑥ 取毀証明書</button>
@@ -135,6 +136,17 @@
     <div id="expenseList"></div>
     <div id="expenseMonthly"></div>
   </section>
+  <section id="tab-lease" class="tab no-print">
+    <div id="leaseAlerts"></div>
+    <h2>この案件のリース（重機・ダンプ）</h2>
+    <p class="hint">決めた日数までは日割り、その日数を超えると自動で月極料金に切り替えて計算します。返した日が空欄の機械は「借りている途中」として今日までの日数で計算します。</p>
+    <div class="rare">
+      <label for="leasePreset">借りた機械を追加</label>
+      <div class="rare-row"><select id="leasePreset"></select><button class="btn" id="addLease">＋ 追加</button></div>
+    </div>
+    <div id="leaseList"></div>
+    <div id="leaseTotal"></div>
+  </section>
   <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
   <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="greetingOut"></div></section>
   <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
@@ -174,9 +186,22 @@
         <div class="always"><div class="always-title">いつも出るゴミ（どの案件にも最初から欄を表示）</div><div id="alwaysTypes"></div></div>
       </fieldset>
       <fieldset>
+        <legend>リースの機械（よく借りるもの）</legend>
+        <p class="hint">ここに登録した機械は、リースタブで選ぶだけで単価が入ります。「切替日数」を超えて借りると月極料金になります。</p>
+        <div id="leasePresets"></div>
+        <button type="button" class="btn ghost small" id="addPreset">＋ 機械を追加</button>
+      </fieldset>
+      <fieldset>
         <legend>処分単価（ゴミの種類ごと）</legend>
         <p class="hint">マニフェストの数量 × この単価で処分代を自動計算します。処分場ごとに違う場合は、マニフェスト1枚ごとに単価を変えられます。</p>
         <div id="dispPrices" class="disp-grid"></div>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>処分場ごとの単価</legend>
+        <p class="hint">処分場によって単価が違う場合はここに登録します。マニフェストの「処分業者」にこの名前を選ぶと、その処分場の単価で処分代を計算します（空欄の種類は標準の単価）。</p>
+        <div id="sites"></div>
+        <button type="button" class="btn ghost small" id="addSite">＋ 処分場を追加</button>
+        <div id="siteCompare"></div>
       </fieldset>
       <fieldset>
         <legend>原価（利益チェック用）</legend>

@@ -159,3 +159,28 @@ table.cost tfoot th, table.cost tfoot td { border-top: 2px solid var(--line); }
 table.cost.wide { min-width: 560px; }
 table.cost.wide td, table.cost.wide th { white-space: nowrap; }
 .kpis.compact .kpi:last-child { grid-column: 1 / -1; }
+
+/* リース */
+.flex1 { flex: 1; }
+.lcalc { background: var(--soft); border-radius: 6px; padding: 8px 10px; margin: 8px 0 4px; display: grid; gap: 4px; }
+.lsum { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.lsum b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.lbar { height: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.lbar div { height: 100%; background: #e8a400; }
+.lbar div.m { background: #2f9e44; }
+.warnline { color: var(--warn); }
+#tab-lease h2 { margin: 22px 0 8px; font-size: 18px; }
+.preset { display: grid; grid-template-columns: 2fr repeat(4, 1fr) auto; gap: 0 8px; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 4px; }
+.preset .btn { margin-bottom: 8px; }
+@media (max-width: 700px) { .preset { grid-template-columns: 1fr 1fr; } .preset .pname { grid-column: 1 / -1; } }
+
+/* 処分場ごとの単価 */
+.site { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--soft); }
+.site-head { display: flex; gap: 8px; align-items: end; }
+.site-head .pname { flex: 1; margin: 4px 0; }
+.site-head .btn { margin-bottom: 6px; }
+td.cheap { color: #1b6e2a; font-weight: 700; background: #d3f9d8; }
+.sc-title { font-size: 15px; margin: 14px 0 6px; }
+.best { color: #2f9e44; }
+fieldset { min-width: 0; }
+.tipline { color: #1b6e2a; }
