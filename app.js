@@ -1224,4 +1224,16 @@
   });
 
   fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+
+  // 日付が変わったら描き直す（開いたままでも、借りている途中のリースや期限が今日の日付で計算される）
+  let shownDay = todayIso();
+  function refreshIfNewDay() {
+    if (todayIso() === shownDay) return;
+    shownDay = todayIso();
+    renderAll();
+  }
+  setInterval(refreshIfNewDay, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshIfNewDay(); });
+  window.addEventListener('focus', refreshIfNewDay);
+  $('#tabs').addEventListener('click', refreshIfNewDay);
 })();
