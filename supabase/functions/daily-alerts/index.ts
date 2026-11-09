@@ -80,6 +80,10 @@ Deno.serve(async (req) => {
       results.push({ user: t.user_id, sent: false, reason: String((e as Error).message ?? e) });
     }
   }
+  // 送れたか・理由を記録する（管理用）
+  if (results.length) {
+    await admin.from('kj_notify_log').insert(results.map((r) => ({ user_id: r.user, kind: onlyUser ? 'test' : 'cron', sent: r.sent, reason: r.reason ?? null })));
+  }
   if (onlyUser) {
     const r = results[0];
     if (!r) return json({ sent: false, reason: 'LINEの設定がまだ保存されていません' });
