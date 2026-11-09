@@ -23,6 +23,7 @@
   <button data-tab="profit">💰 利益チェック</button>
   <button data-tab="process">📅 工程表</button>
   <button data-tab="manifest">🚛 マニフェスト</button>
+  <button data-tab="expense">⛽ 経費</button>
   <button data-tab="recycle">④ リサイクル法 届出下書き</button>
   <button data-tab="greeting">⑤ 近隣挨拶文</button>
   <button data-tab="certificate">⑥ 取毀証明書</button>
@@ -117,8 +118,22 @@
       <div class="rare-row"><select id="rareType"></select><button class="btn ghost" id="addRare">＋ 追加</button></div>
     </div>
     <datalist id="carrierList"></datalist><datalist id="disposerList"></datalist>
+    <div id="manifestCost"></div>
     <div id="manifestCompare"></div>
     <div id="manifestReport"></div>
+  </section>
+  <section id="tab-expense" class="tab no-print">
+    <h2>この案件の経費</h2>
+    <p class="hint">消耗品・高速代・燃料費などを、使ったその日に入れておきます。日付と項目は次の入力に引き継がれます。</p>
+    <form id="expenseForm" class="expform">
+      <label>日付<input id="expDate" type="date" required></label>
+      <label>項目<select id="expCat"></select></label>
+      <label>金額（円）<input id="expAmount" type="number" min="0" inputmode="numeric" required placeholder="例 3200"></label>
+      <label class="memo">メモ<input id="expMemo" placeholder="例 養生シート5枚、首都高 往復"></label>
+      <button class="btn" type="submit">＋ 経費を追加</button>
+    </form>
+    <div id="expenseList"></div>
+    <div id="expenseMonthly"></div>
   </section>
   <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
   <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="greetingOut"></div></section>
@@ -159,6 +174,11 @@
         <div class="always"><div class="always-title">いつも出るゴミ（どの案件にも最初から欄を表示）</div><div id="alwaysTypes"></div></div>
       </fieldset>
       <fieldset>
+        <legend>処分単価（ゴミの種類ごと）</legend>
+        <p class="hint">マニフェストの数量 × この単価で処分代を自動計算します。処分場ごとに違う場合は、マニフェスト1枚ごとに単価を変えられます。</p>
+        <div id="dispPrices" class="disp-grid"></div>
+      </fieldset>
+      <fieldset>
         <legend>原価（利益チェック用）</legend>
         <label>作業員の人工単価（円/人日）<input name="cLabor" type="number"></label>
         <label>作業員の人数（人）<input name="cWorkers" type="number"></label>
@@ -166,9 +186,6 @@
         <label>重機損料・燃料（円/日）<input name="cMachine" type="number"></label>
         <label>ダンプ1台の積載量（t）<input name="cTruckLoad" type="number" step="0.5"></label>
         <label>ダンプ運搬費（円/台）<input name="cTruck" type="number"></label>
-        <label>処分費 コンクリート塊（円/t）<input name="cDispConcrete" type="number"></label>
-        <label>処分費 木くず（円/t）<input name="cDispWood" type="number"></label>
-        <label>処分費 混合廃棄物（円/t）<input name="cDispMixed" type="number"></label>
         <label>処分費 残置物（円/㎥）<input name="cDispDebris" type="number"></label>
         <label>ガードマン（円/人日）<input name="cGuard" type="number"></label>
         <label>アスベスト除去の外注原価率（％）<input name="cOutsource" type="number"></label>

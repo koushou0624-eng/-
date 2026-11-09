@@ -140,3 +140,22 @@ label.inline select { width: auto; min-width: 0; flex: 0 1 auto; }
 .always-title { font-size: 13px; color: var(--muted); }
 .always label.check { margin: 4px 0; }
 .legal { font-size: 12px; font-weight: normal; color: var(--muted); }
+
+/* 処分代・経費 */
+.mcost { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.mcost b { color: var(--ink); }
+.disp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 10px; }
+.expform { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 10px; align-items: end;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px 12px; margin-bottom: 12px; }
+.expform .memo { grid-column: span 2; }
+.expform .btn { height: 40px; }
+@media (max-width: 600px) { .expform .memo { grid-column: auto; } }
+#tab-expense h2 { margin: 22px 0 8px; font-size: 18px; }
+#tab-expense h2:first-child { margin-top: 0; }
+.neg { color: #e03131; }
+table.cost tfoot th, table.cost tfoot td { border-top: 2px solid var(--line); }
+.kpis.compact { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.kpis.compact .v { font-size: 20px; }
+table.cost.wide { min-width: 560px; }
+table.cost.wide td, table.cost.wide th { white-space: nowrap; }
+.kpis.compact .kpi:last-child { grid-column: 1 / -1; }

@@ -14,7 +14,9 @@
     pAsb3: 3000, pAsb12: 30000, pScaffold: 800, pOverhead: 5,
     // 原価（利益チェック用）
     cLabor: 18000, cWorkers: 3, cMove: 35000, cMachine: 10000, cTruckLoad: 4, cTruck: 15000,
-    cDispConcrete: 3000, cDispWood: 12000, cDispMixed: 25000, cDispDebris: 8000,
+    cDispDebris: 8000,
+    // 処分単価（円/t、アスベストは円/㎥）。相場の目安
+    dispPrices: { wood: 12000, concrete: 3000, concreteR: 4500, mixed: 25000, plastic: 35000, glass: 10000, gypsum: 20000, asphalt: 3000, metal: 5000, asb: 30000, asbsp: 80000 },
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
     defCarrier: '', defDisposer: '',
     alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
@@ -35,6 +37,7 @@
     { id: 'asbsp', name: 'アスベスト（レベル1・2の吹付けなど）', legal: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
   ];
   const WT = Object.fromEntries(WASTE_TYPES.map((w) => [w.id, w]));
+  const EXPENSE_CATS = ['消耗品', '高速代', '燃料費', 'その他'];
   // 延床1㎡あたりの廃棄物量の目安（トン）
   // c:コンクリート塊 w:木材 a:アスファルト m:混合廃棄物 fe:鉄スクラップ
   const WASTE_FACTOR = {
@@ -60,7 +63,14 @@
       if (raw) {
         const d = JSON.parse(raw);
         if ((d.settings?.wasteVer || 1) < 2) { d.settings = { ...d.settings, alwaysTypes: DEFAULT_SETTINGS.alwaysTypes, wasteVer: 2 }; }
-        d.settings = { ...DEFAULT_SETTINGS, ...d.settings };
+        const old = d.settings || {};
+        d.settings = { ...DEFAULT_SETTINGS, ...old };
+        // 処分単価：古いデータの「コンクリート塊・木くず・混合廃棄物」の単価を引き継ぐ
+        const legacy = {};
+        if (old.cDispConcrete != null) legacy.concrete = old.cDispConcrete;
+        if (old.cDispWood != null) legacy.wood = old.cDispWood;
+        if (old.cDispMixed != null) legacy.mixed = old.cDispMixed;
+        d.settings.dispPrices = { ...DEFAULT_SETTINGS.dispPrices, ...(old.dispPrices ? {} : legacy), ...(old.dispPrices || {}) };
         if (d.cases?.length) return d;
       }
     } catch (_) { /* 保存領域が使えない場合は初期状態 */ }
@@ -78,7 +88,7 @@
       structure: 'wood', floors: 2, floorArea: '', use: '専用住宅', builtYear: '',
       noHeavy: false, narrowRoad: false, debrisM3: 0, blockM: 0, concreteM2: 0, trees: 0,
       asbestos: 'none', asbestosM2: 0, startDate: '', endDate: '',
-      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '', manifests: [],
+      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '', manifests: [], expenses: [],
     };
   }
 
@@ -172,13 +182,14 @@
     const tons = w.concrete + w.wood + w.asphalt + w.mixed;
     const trucks = Math.ceil(tons / Math.max(0.5, num(s.cTruckLoad))) + Math.ceil(num(c.debrisM3) / Math.max(1, num(s.cTruckLoad) * 2));
     const asbLine = e.lines.find((l) => l.name.startsWith('アスベスト'));
+    const dp = (id) => num((s.dispPrices || {})[id]);
     const rows = [
       { name: '作業員（人工）', detail: `${workers}人 × ${d}日 × ${yen(s.cLabor)}円`, amount: workers * d * num(s.cLabor) },
       { name: '重機（回送・損料・燃料）', detail: c.noHeavy ? '重機なし（手壊し）' : `回送 往復 ${yen(num(s.cMove) * 2)}円 ＋ ${d}日 × ${yen(s.cMachine)}円`, amount: c.noHeavy ? 0 : num(s.cMove) * 2 + d * num(s.cMachine) },
       { name: 'ダンプ運搬', detail: `${trucks}台 × ${yen(s.cTruck)}円（${num(s.cTruckLoad)}t積み）`, amount: trucks * num(s.cTruck) },
-      { name: '処分費 コンクリート塊・アスファルト', detail: `${(w.concrete + w.asphalt).toFixed(1)}t × ${yen(s.cDispConcrete)}円`, amount: (w.concrete + w.asphalt) * num(s.cDispConcrete) },
-      { name: '処分費 木くず', detail: `${w.wood.toFixed(1)}t × ${yen(s.cDispWood)}円`, amount: w.wood * num(s.cDispWood) },
-      { name: '処分費 混合廃棄物', detail: `${w.mixed.toFixed(1)}t × ${yen(s.cDispMixed)}円`, amount: w.mixed * num(s.cDispMixed) },
+      { name: '処分費 コンクリートガラ・アスファルトガラ', detail: `${w.concrete.toFixed(1)}t × ${yen(dp('concrete'))}円 ＋ ${w.asphalt.toFixed(1)}t × ${yen(dp('asphalt'))}円`, amount: w.concrete * dp('concrete') + w.asphalt * dp('asphalt') },
+      { name: '処分費 木（シバ）', detail: `${w.wood.toFixed(1)}t × ${yen(dp('wood'))}円`, amount: w.wood * dp('wood') },
+      { name: '処分費 ミンチ（混合廃棄物）', detail: `${w.mixed.toFixed(1)}t × ${yen(dp('mixed'))}円`, amount: w.mixed * dp('mixed') },
       { name: '処分費 残置物', detail: `${num(c.debrisM3)}㎥ × ${yen(s.cDispDebris)}円`, amount: num(c.debrisM3) * num(s.cDispDebris) },
       { name: 'アスベスト除去（外注）', detail: asbLine ? `見積額の${num(s.cOutsource)}%` : 'なし', amount: asbLine ? asbLine.amount * num(s.cOutsource) / 100 : 0 },
       { name: 'ガードマン（交通誘導）', detail: c.narrowRoad ? `1人 × ${d}日 × ${yen(s.cGuard)}円` : '不要（狭小道路でない）', amount: c.narrowRoad ? d * num(s.cGuard) : 0 },
@@ -301,7 +312,30 @@
       </div>
       <div class="table-wrap"><table class="cost"><thead><tr><th>原価の内訳</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th>原価 合計</th><td class="num"><b>¥${yen(r.cost)}</b></td></tr></tfoot></table></div>
-      <p class="hint">原価の単価は「⚙ 会社・単価設定」の「原価」で自社の値に変えられます。数字は目安です。</p>`;
+      <p class="hint">原価の単価は「⚙ 会社・単価設定」の「原価」で自社の値に変えられます。数字は目安です。</p>
+      ${actualHtml(c, r)}`;
+  }
+
+  // 実績（マニフェストの処分代・経費）で見た利益
+  function actualHtml(c, r) {
+    const disp = dispSummary(c), exp = expenseSummary(c);
+    if (!disp.total && !exp.total) {
+      return '<h2>実際の利益（実績）</h2><p class="hint">「🚛 マニフェスト」に数量、「⛽ 経費」に消耗品・高速代・燃料費を入れると、見込みと実際の利益を比べられます。</p>';
+    }
+    const estDisp = r.rows.filter((x) => x.name.startsWith('処分費')).reduce((a, x) => a + x.amount, 0);
+    const estSupply = r.rows.filter((x) => x.name.startsWith('養生シート')).reduce((a, x) => a + x.amount, 0);
+    const actCost = Math.round(r.cost - (disp.total ? estDisp : 0) + disp.total - (exp.total ? estSupply : 0) + exp.total);
+    const profit = r.sales - actCost, margin = r.sales > 0 ? profit / r.sales * 100 : 0;
+    const row = (name, est, act, note = '') => `<tr><td>${name}${note ? `<div class="sub">${note}</div>` : ''}</td><td class="num">${est == null ? '—' : '¥' + yen(est)}</td><td class="num">${act == null ? '—' : '¥' + yen(act)}</td></tr>`;
+    return `
+      <h2>実際の利益（実績）</h2>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>項目</th><th class="num">見込み</th><th class="num">実績</th></tr></thead><tbody>
+        ${row('処分代', estDisp, disp.total || null, disp.total ? `マニフェスト ${disp.count}枚分` : 'マニフェスト未入力（見込みのまま計算）')}
+        ${EXPENSE_CATS.map((k) => row(`経費：${k}`, k === '消耗品' ? estSupply : null, exp.byCat[k] || null)).join('')}
+        ${row('原価 合計', r.cost, actCost, '人工・重機・ダンプ・ガードマンは見込みのまま')}
+        <tr><th>粗利（利益）</th><td class="num">¥${yen(r.profit)}（${r.margin.toFixed(1)}%）</td><td class="num"><b class="${profit < 0 ? 'neg' : ''}">¥${yen(profit)}（${margin.toFixed(1)}%）</b></td></tr>
+      </tbody></table></div>
+      <p class="hint">燃料費・高速代は見込みでは重機・ダンプの費用に含めているため、実績の利益は少し低めに出ます。</p>`;
   }
 
   // 日曜を休工日として、実働日を日付に割り当てる
@@ -390,16 +424,46 @@
   };
   const estLabel = (type) => (type === 'concrete' ? '見込み（無筋・有筋の合計）' : '見込み');
 
+  // ---------- 処分代 ----------
+  const dispPrice = (type) => num((state.settings.dispPrices || {})[type]);
+  const unitPriceOf = (m) => (m.price !== '' && m.price != null ? num(m.price) : dispPrice(m.type));
+  const dispOf = (m) => num(m.qty) * unitPriceOf(m);
+  const mcostHtml = (m) => (num(m.qty) > 0 ? `処分代 <b>¥${yen(dispOf(m))}</b>` : '');
+  function gsumHtml(c, type) {
+    const w = WT[type], list = manifestsOf(c).filter((m) => m.type === type);
+    const total = list.reduce((a, m) => a + num(m.qty), 0), cost = list.reduce((a, m) => a + dispOf(m), 0), est = estimateFor(c, type);
+    const open = list.filter((m) => manifestChecks(m).some((x) => x.state === 'late')).length;
+    return `${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>・処分代 <b>¥${yen(cost)}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}`;
+  }
+  function dispSummary(c) {
+    const ms = manifestsOf(c).filter((m) => num(m.qty) > 0), by = {};
+    ms.forEach((m) => { const g = by[m.type] || (by[m.type] = { n: 0, qty: 0, cost: 0 }); g.n++; g.qty += num(m.qty); g.cost += dispOf(m); });
+    return { by, total: Math.round(ms.reduce((a, m) => a + dispOf(m), 0)), count: ms.length };
+  }
+  function renderManifestCost(c) {
+    const d = dispSummary(c);
+    const rows = WASTE_TYPES.filter((w) => d.by[w.id]).map((w) => {
+      const g = d.by[w.id];
+      return `<tr><td>${esc(w.name)}</td><td class="num">${g.n}</td><td class="num">${g.qty.toFixed(2)} ${w.unit}</td><td class="num">¥${yen(g.qty ? g.cost / g.qty : 0)}</td><td class="num">¥${yen(g.cost)}</td></tr>`;
+    }).join('');
+    $('#manifestCost').innerHTML = `
+      <h2>処分代（ゴミの種類ごと）</h2>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>種類</th><th class="num">枚数</th><th class="num">数量</th><th class="num">平均単価</th><th class="num">処分代</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">マニフェストに数量を入れると、ここに処分代が出ます</td></tr>'}</tbody>
+        <tfoot><tr><th colspan="4">処分代 合計</th><td class="num"><b>¥${yen(d.total)}</b></td></tr></tfoot></table></div>`;
+  }
+
   function manifestCard(m, i) {
     return `
       <div class="mcard" data-mid="${m.id}">
-        <div class="mhead"><b>${i + 1}枚目</b><span class="chips" id="chips-${m.id}">${chipsHtml(m)}</span>
+        <div class="mhead"><b>${i + 1}枚目</b><span class="mcost" id="mcost-${m.id}">${mcostHtml(m)}</span><span class="chips" id="chips-${m.id}">${chipsHtml(m)}</span>
           <button class="btn ghost small" data-mdel="${m.id}">削除</button></div>
         <div class="mgrid">
           <label>種類<select data-f="kind"><option value="paper" ${m.kind !== 'electronic' ? 'selected' : ''}>紙</option><option value="electronic" ${m.kind === 'electronic' ? 'selected' : ''}>電子（JWNET）</option></select></label>
           <label>交付番号<input data-f="no" value="${esc(m.no)}" placeholder="例 1234567890"></label>
           <label>交付日（搬出日）<input data-f="date" type="date" value="${esc(m.date)}"></label>
           <label>数量（${WT[m.type]?.unit || 't'}）<input data-f="qty" type="number" min="0" step="0.01" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"></label>
+          <label>処分単価（円/${WT[m.type]?.unit || 't'}）<input data-f="price" type="number" min="0" value="${esc(m.price ?? '')}" placeholder="標準 ${yen(dispPrice(m.type))}"></label>
           <label>収集運搬業者<input data-f="carrier" list="carrierList" value="${esc(m.carrier)}"></label>
           <label>処分業者<input data-f="disposer" list="disposerList" value="${esc(m.disposer)}"></label>
           ${m.kind === 'electronic' ? `<label>JWNET登録日<input data-f="reg" type="date" value="${esc(m.reg)}"></label>` : ''}
@@ -421,7 +485,7 @@
       <section class="mgroup" data-type="${type}">
         <div class="ghead">
           <div class="gname">${esc(w.name)} <span class="legal">${esc(w.legal)}</span>${w.sp ? ' <span class="chip late">特別管理・期限60日</span>' : ''} ${tag}</div>
-          <div class="gsum">${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}</div>
+          <div class="gsum" id="gsum-${type}">${gsumHtml(c, type)}</div>
           <button class="btn small" data-addtype="${type}">＋ 1枚追加</button>
         </div>
         ${list.length ? list.map(manifestCard).join('') : '<p class="empty small-pad">まだ0枚です。搬出したら「＋ 1枚追加」で登録します。</p>'}
@@ -466,7 +530,7 @@
       return `<tr><td>${n}</td><td class="num">${e.toFixed(1)}</td><td class="num">${a ? a.toFixed(1) : '—'}</td><td class="num ${a && diff > 0.05 ? 'over' : ''}">${a ? (diff >= 0 ? '+' : '') + diff.toFixed(1) : ''}</td></tr>`;
     }).join('');
     // 実績が入っている品目だけで処分費のずれを出す
-    const s = state.settings, price = [num(s.cDispConcrete), num(s.cDispConcrete), num(s.cDispWood), num(s.cDispMixed)];
+    const price = [dispPrice('concrete'), dispPrice('asphalt'), dispPrice('wood'), dispPrice('mixed')];
     const extra = rows.reduce((a, [, e, act], i) => a + (act > 0 ? (act - e) * price[i] : 0), 0);
     const any = rows.some(([, , act]) => act > 0);
     $('#manifestCompare').innerHTML = `
@@ -502,8 +566,56 @@
       <p class="hint">提出は各自治体の様式（様式第三号）で行ってください。この表は転記用の集計です。</p>`;
   }
 
-  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCompare(c); renderManifestReport(); }
-  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); }
+  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); }
+  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCost(c); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
+
+  // ---------- 経費 ----------
+  const expensesOf = (c) => (Array.isArray(c.expenses) ? c.expenses : (c.expenses = []));
+  function expenseSummary(c) {
+    const byCat = {}; let total = 0;
+    expensesOf(c).forEach((x) => { byCat[x.cat] = (byCat[x.cat] || 0) + num(x.amount); total += num(x.amount); });
+    return { byCat, total };
+  }
+  let expMonth = null;
+  function renderExpense(c) {
+    if (!$('#expCat').options.length) $('#expCat').innerHTML = EXPENSE_CATS.map((k) => `<option>${k}</option>`).join('');
+    if (!$('#expDate').value) $('#expDate').value = todayIso();
+    const list = expensesOf(c).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const sum = expenseSummary(c);
+    $('#expenseList').innerHTML = `
+      <div class="kpis compact">${EXPENSE_CATS.map((k) => `<div class="kpi"><div class="k">${k}</div><div class="v">¥${yen(sum.byCat[k] || 0)}</div></div>`).join('')}
+        <div class="kpi"><div class="k">経費 合計</div><div class="v">¥${yen(sum.total)}</div></div></div>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>日付</th><th>項目</th><th class="num">金額</th><th>メモ</th><th></th></tr></thead>
+        <tbody>${list.map((x) => `<tr><td>${fmtIso(x.date)}</td><td>${esc(x.cat)}</td><td class="num">¥${yen(x.amount)}</td><td>${esc(x.memo)}</td><td class="num"><button class="btn ghost small" data-expdel="${x.id}">削除</button></td></tr>`).join('')
+          || '<tr><td colspan="5" class="empty">まだ経費がありません</td></tr>'}</tbody></table></div>`;
+    renderExpenseMonthly();
+  }
+  // 月ごとの全案件まとめ（経費＋処分代）
+  function renderExpenseMonthly() {
+    const ym = (iso) => String(iso || '').slice(0, 7);
+    const withData = new Set();
+    state.cases.forEach((c) => { expensesOf(c).forEach((x) => withData.add(ym(x.date))); manifestsOf(c).forEach((m) => m.date && num(m.qty) && withData.add(ym(m.date))); });
+    const sorted = [...new Set([...withData, ym(todayIso())])].filter(Boolean).sort().reverse();
+    const latest = [...withData].filter(Boolean).sort().reverse()[0] || ym(todayIso());
+    const mon = expMonth && sorted.includes(expMonth) ? expMonth : latest;
+    const tot = { disp: 0 }; EXPENSE_CATS.forEach((k) => { tot[k] = 0; });
+    const rows = state.cases.map((c) => {
+      const r = { disp: manifestsOf(c).filter((m) => ym(m.date) === mon).reduce((a, m) => a + dispOf(m), 0) };
+      EXPENSE_CATS.forEach((k) => { r[k] = expensesOf(c).filter((x) => ym(x.date) === mon && x.cat === k).reduce((a, x) => a + num(x.amount), 0); });
+      const all = r.disp + EXPENSE_CATS.reduce((a, k) => a + r[k], 0);
+      if (!all) return '';
+      tot.disp += r.disp; EXPENSE_CATS.forEach((k) => { tot[k] += r[k]; });
+      return `<tr><td>${esc(caseName(c))}</td><td class="num">¥${yen(r.disp)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(r[k])}</td>`).join('')}<td class="num"><b>¥${yen(all)}</b></td></tr>`;
+    }).join('');
+    const grand = tot.disp + EXPENSE_CATS.reduce((a, k) => a + tot[k], 0);
+    $('#expenseMonthly').innerHTML = `
+      <h2>月ごとのまとめ（全案件）</h2>
+      <label class="inline" for="expMonth">月 <select id="expMonth">${sorted.map((m) => `<option value="${m}" ${m === mon ? 'selected' : ''}>${m.replace('-', '年')}月</option>`).join('')}</select></label>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>現場</th><th class="num">処分代</th>${EXPENSE_CATS.map((k) => `<th class="num">${k}</th>`).join('')}<th class="num">合計</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${EXPENSE_CATS.length + 3}" class="empty">この月の処分代・経費はありません</td></tr>`}</tbody>
+        <tfoot><tr><th>合計</th><td class="num">¥${yen(tot.disp)}</td>${EXPENSE_CATS.map((k) => `<td class="num">¥${yen(tot[k])}</td>`).join('')}<td class="num"><b>¥${yen(grand)}</b></td></tr></tfoot></table></div>
+      <p class="hint">処分代はマニフェストの交付日（搬出日）の月で数えています。</p>`;
+  }
 
   function newManifest(c, extra = {}) {
     const s = state.settings;
@@ -581,7 +693,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -606,7 +718,11 @@
     const m = manifestsOf(cur()).find((x) => x.id === card.dataset.mid); if (!m) return;
     m[el.dataset.f] = el.value; save();
     if (el.dataset.f === 'kind' || el.dataset.f === 'type') { renderManifestList(cur()); }
-    else { const ch = $('#chips-' + m.id); if (ch) ch.innerHTML = chipsHtml(m); }
+    else {
+      const ch = $('#chips-' + m.id); if (ch) ch.innerHTML = chipsHtml(m);
+      const mc = $('#mcost-' + m.id); if (mc) mc.innerHTML = mcostHtml(m);
+      const gs = $('#gsum-' + m.type); if (gs) gs.innerHTML = gsumHtml(cur(), m.type);
+    }
     refreshManifestSummary(cur());
   });
   const mdelArmed = {};
@@ -634,6 +750,32 @@
     const c = cur(); c.extraTypes = [...new Set([...(c.extraTypes || []), type])]; save(); renderAll();
     document.querySelector(`.mgroup[data-type="${type}"]`)?.scrollIntoView({ block: 'center' });
   });
+  // 経費の追加・削除
+  $('#expenseForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = num($('#expAmount').value); if (!(amount > 0)) { $('#expAmount').focus(); return; }
+    expensesOf(cur()).push({ id: uid(), date: $('#expDate').value || todayIso(), cat: $('#expCat').value, amount, memo: $('#expMemo').value.trim() });
+    $('#expAmount').value = ''; $('#expMemo').value = ''; save(); renderAll(); $('#expAmount').focus();
+  });
+  const expDelArmed = {};
+  $('#expenseList').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-expdel]'); if (!b) return;
+    const id = b.dataset.expdel;
+    if (!expDelArmed[id]) { b.textContent = 'もう一度'; expDelArmed[id] = setTimeout(() => { b.textContent = '削除'; delete expDelArmed[id]; }, 3000); return; }
+    clearTimeout(expDelArmed[id]); delete expDelArmed[id];
+    const c = cur(); c.expenses = expensesOf(c).filter((x) => x.id !== id); save(); renderAll();
+  });
+  $('#expenseMonthly').addEventListener('change', (e) => { if (e.target.id === 'expMonth') { expMonth = e.target.value; renderExpenseMonthly(); } });
+  // 設定：処分単価
+  function renderDispPrices() {
+    const dp = state.settings.dispPrices || {};
+    $('#dispPrices').innerHTML = WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-disp="${w.id}" value="${esc(dp[w.id] ?? '')}"></label>`).join('');
+  }
+  $('#dispPrices').addEventListener('input', (e) => {
+    const id = e.target.dataset.disp; if (!id) return;
+    state.settings.dispPrices = { ...state.settings.dispPrices, [id]: e.target.value }; save(); renderAll();
+  });
+  renderDispPrices();
   // 設定：いつも出るゴミ
   function renderAlwaysTypes() {
     const on = new Set(state.settings.alwaysTypes || []);
@@ -660,7 +802,7 @@
     if (!resetArmed) { btn.textContent = 'もう一度押すと全データを消します'; resetArmed = setTimeout(() => { btn.textContent = 'すべてのデータを消して最初の状態に戻す'; resetArmed = null; }, 4000); return; }
     clearTimeout(resetArmed); resetArmed = null; btn.textContent = 'すべてのデータを消して最初の状態に戻す';
     try { localStorage.removeItem(STORE_KEY); } catch (_) { /* noop */ }
-    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAlwaysTypes(); renderAll();
+    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAlwaysTypes(); renderDispPrices(); renderAll();
     $('#tabs button[data-tab=input]').click();
   });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });
