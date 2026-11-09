@@ -17,20 +17,22 @@
     cDispConcrete: 3000, cDispWood: 12000, cDispMixed: 25000, cDispDebris: 8000,
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
     defCarrier: '', defDisposer: '',
-    alwaysTypes: ['concrete', 'wood', 'mixed', 'glass', 'gypsum'],
+    alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
+  // name: 現場での呼び方、legal: 法律上の産業廃棄物の種類（報告書の集計に使う）
   const WASTE_TYPES = [
-    { id: 'concrete', name: 'がれき類（コンクリートがら）', unit: 't' },
-    { id: 'asphalt', name: 'がれき類（アスファルト・コンクリートがら）', unit: 't' },
-    { id: 'wood', name: '木くず', unit: 't' },
-    { id: 'mixed', name: '混合廃棄物（安定型・管理型混合）', unit: 't' },
-    { id: 'plastic', name: '廃プラスチック類', unit: 't' },
-    { id: 'metal', name: '金属くず', unit: 't' },
-    { id: 'glass', name: 'ガラスくず・陶磁器くず（瓦など）', unit: 't' },
-    { id: 'gypsum', name: '廃石膏ボード', unit: 't' },
-    { id: 'asb', name: '石綿含有産業廃棄物', unit: '㎥' },
-    { id: 'asbsp', name: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
+    { id: 'wood', name: '木（シバ）', legal: '木くず', unit: 't' },
+    { id: 'concrete', name: 'コンクリートガラ（無筋）', legal: 'がれき類', unit: 't' },
+    { id: 'concreteR', name: 'コンクリートガラ（有筋）', legal: 'がれき類', unit: 't' },
+    { id: 'mixed', name: 'ミンチ', legal: '混合廃棄物', unit: 't' },
+    { id: 'plastic', name: '廃プラ', legal: '廃プラスチック類', unit: 't' },
+    { id: 'glass', name: '瓦', legal: 'ガラスくず・コンクリートくず及び陶磁器くず', unit: 't' },
+    { id: 'gypsum', name: '石膏ボード', legal: 'ガラスくず・コンクリートくず及び陶磁器くず（廃石膏ボード）', unit: 't' },
+    { id: 'asphalt', name: 'アスファルトガラ', legal: 'がれき類', unit: 't' },
+    { id: 'metal', name: '金属くず（売れない鉄くずなど）', legal: '金属くず', unit: 't' },
+    { id: 'asb', name: 'アスベスト（レベル3の成形板など）', legal: '石綿含有産業廃棄物', unit: '㎥' },
+    { id: 'asbsp', name: 'アスベスト（レベル1・2の吹付けなど）', legal: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
   ];
   const WT = Object.fromEntries(WASTE_TYPES.map((w) => [w.id, w]));
   // 延床1㎡あたりの廃棄物量の目安（トン）
@@ -57,6 +59,7 @@
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const d = JSON.parse(raw);
+        if ((d.settings?.wasteVer || 1) < 2) { d.settings = { ...d.settings, alwaysTypes: DEFAULT_SETTINGS.alwaysTypes, wasteVer: 2 }; }
         d.settings = { ...DEFAULT_SETTINGS, ...d.settings };
         if (d.cases?.length) return d;
       }
@@ -385,6 +388,7 @@
     const w = wasteOf(c);
     return { concrete: w.concrete, asphalt: w.asphalt, wood: w.wood, mixed: w.mixed }[type];
   };
+  const estLabel = (type) => (type === 'concrete' ? '見込み（無筋・有筋の合計）' : '見込み');
 
   function manifestCard(m, i) {
     return `
@@ -416,8 +420,8 @@
       return `
       <section class="mgroup" data-type="${type}">
         <div class="ghead">
-          <div class="gname">${esc(w.name)}${w.sp ? ' <span class="chip late">特別管理・期限60日</span>' : ''} ${tag}</div>
-          <div class="gsum">${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>${est ? `（見込み ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}</div>
+          <div class="gname">${esc(w.name)} <span class="legal">${esc(w.legal)}</span>${w.sp ? ' <span class="chip late">特別管理・期限60日</span>' : ''} ${tag}</div>
+          <div class="gsum">${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}</div>
           <button class="btn small" data-addtype="${type}">＋ 1枚追加</button>
         </div>
         ${list.length ? list.map(manifestCard).join('') : '<p class="empty small-pad">まだ0枚です。搬出したら「＋ 1枚追加」で登録します。</p>'}
@@ -425,7 +429,7 @@
       </section>`;
     }).join('');
     const rare = WASTE_TYPES.filter((w) => !shown.includes(w.id));
-    $('#rareType').innerHTML = rare.length ? rare.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('') : '<option value="">（すべて表示済み）</option>';
+    $('#rareType').innerHTML = rare.length ? rare.map((w) => `<option value="${w.id}">${esc(w.name)}（${esc(w.legal)}）</option>`).join('') : '<option value="">（すべて表示済み）</option>';
     $('#addRare').disabled = !rare.length;
     const names = (k) => [...new Set(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k])).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
     $('#carrierList').innerHTML = names('carrier').map((n) => `<option value="${esc(n)}">`).join('');
@@ -452,10 +456,10 @@
     const w = wasteOf(c), ms = manifestsOf(c);
     const act = (ids) => ms.filter((m) => ids.includes(m.type) && (WT[m.type]?.unit === 't')).reduce((a, m) => a + num(m.qty), 0);
     const rows = [
-      ['コンクリートがら', w.concrete, act(['concrete'])],
-      ['アスファルト・コンクリートがら', w.asphalt, act(['asphalt'])],
-      ['木くず', w.wood, act(['wood'])],
-      ['混合廃棄物など', w.mixed, act(['mixed', 'plastic', 'glass', 'gypsum'])],
+      ['コンクリートガラ（無筋＋有筋）', w.concrete, act(['concrete', 'concreteR'])],
+      ['アスファルトガラ', w.asphalt, act(['asphalt'])],
+      ['木（シバ）', w.wood, act(['wood'])],
+      ['ミンチ・廃プラ・瓦など', w.mixed, act(['mixed', 'plastic', 'glass', 'gypsum'])],
     ];
     const tr = rows.map(([n, e, a]) => {
       const diff = a - e;
@@ -483,7 +487,7 @@
     const fy = reportFy ?? defFy;
     const groups = {};
     all.filter(({ m }) => fiscalYearOf(m.date) === fy).forEach(({ c, m }) => {
-      const key = [prefOf(c.siteAddress), WT[m.type]?.name || m.type, m.carrier || '（未入力）', m.disposer || '（未入力）'].join('\u0001');
+      const key = [prefOf(c.siteAddress), WT[m.type]?.legal || m.type, m.carrier || '（未入力）', m.disposer || '（未入力）'].join('\u0001');
       const g = groups[key] || (groups[key] = { n: 0, qty: 0, unit: WT[m.type]?.unit || 't' });
       g.n++; g.qty += num(m.qty);
     });
@@ -634,7 +638,7 @@
   function renderAlwaysTypes() {
     const on = new Set(state.settings.alwaysTypes || []);
     $('#alwaysTypes').innerHTML = WASTE_TYPES.filter((w) => w.id !== 'asb' && w.id !== 'asbsp')
-      .map((w) => `<label class="check"><input type="checkbox" data-always="${w.id}" ${on.has(w.id) ? 'checked' : ''}> ${esc(w.name)}</label>`).join('');
+      .map((w) => `<label class="check"><input type="checkbox" data-always="${w.id}" ${on.has(w.id) ? 'checked' : ''}> ${esc(w.name)} <span class="legal">${esc(w.legal)}</span></label>`).join('');
   }
   $('#alwaysTypes').addEventListener('change', (e) => {
     const id = e.target.dataset.always; if (!id) return;
