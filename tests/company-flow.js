@@ -96,7 +96,7 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
   console.log('S: 開き直すと会社の設定画面に戻る');
 
   const m = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage(); await m.goto(invite);
-  await m.waitForSelector('#loginOverlay:not([hidden])'); await m.screenshot({ path: 'm-signup.png' });
+  await m.waitForSelector('#loginOverlay:not([hidden])'); await m.screenshot({ path: path.join(__dirname, '.last-signup.png') });
   console.log('mobile width', await m.evaluate(() => document.documentElement.scrollWidth));
   console.log('errors', e);
   await b.close(); if (LOCAL) server.close();
