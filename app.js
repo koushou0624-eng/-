@@ -296,7 +296,7 @@
     const verdict = r.profit < 0 ? '✕ 赤字' : { good: '◎ 目標以上の利益', mid: '△ 利益が薄い', bad: '✕ 利益が少なすぎる' }[cls];
     const discount = r.sales - r.minPrice;
     const rows = r.rows.map((x) => `<tr><td>${esc(x.name)}<div class="sub">${esc(x.detail)}</div></td><td class="num ${x.amount < 0 ? 'minus' : ''}">${x.amount < 0 ? '−' : ''}${yen(Math.abs(x.amount))}</td></tr>`).join('');
-    $('#profitOut').innerHTML = num(c.floorArea) <= 0 ? '<p class="hint">「① 案件入力」で延床面積を入れると、この現場の利益を計算します。</p>' : `
+    $('#profitOut').innerHTML = num(c.floorArea) <= 0 ? '<p class="hint">「情報」で延床面積を入れると、この現場の利益を計算します。</p>' : `
       <h2>この現場、いくら儲かる？</h2>
       <div class="kpis">
         <div class="kpi"><div class="k">見積金額（税抜）</div><div class="v">¥${yen(r.sales)}</div></div>
@@ -420,7 +420,8 @@
     (state.settings.sites || []).forEach((st) => { const p = sitePrice(st, type); if (p != null && st.name && (!best || p < best.price)) best = { name: st.name, price: p }; });
     return best;
   }
-  const dispOf = (m) => num(m.qty) * unitPriceOf(m);
+  // 重さの入れ間違い（kg を t に入れた）と思われる記録は、直すまで金額に入れない
+  const dispOf = (m) => (tooHeavy(m) ? 0 : num(m.qty) * unitPriceOf(m));
   // マニフェストが入る請求（処分場の締め日。登録のない処分場は末日締め）
   function billOf(m) {
     const site = siteByName(m.disposer);
@@ -609,11 +610,17 @@
   }
 
   // ---------- 処分の状況（マニフェスト画面のいちばん上） ----------
-  let dispView = 'case'; // case＝この現場 / month＝今月の全現場
+  let dispView = 'simple'; // simple＝合計だけ / case＝この現場の種類ごと / month＝今月の全現場
   const tFmt = (q) => (Math.round(q * 100) / 100).toLocaleString('ja-JP');
   function renderDispTop(c) {
     const box = $('#dispTop'); if (!box) return;
-    const tabs = `<div class="seg"><button type="button" data-dview="case" class="${dispView === 'case' ? 'on' : ''}">この現場</button><button type="button" data-dview="month" class="${dispView === 'month' ? 'on' : ''}">今月の全現場</button></div>`;
+    if (dispView === 'simple') {
+      const d = dispSummary(c), tt = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+      box.innerHTML = `<div class="total-card"><div><div class="lab">この現場の処分</div><div class="big">${Math.round(tt * 100) / 100}t</div></div><div class="r"><div class="lab">処分代</div><div class="big">¥${yen(d.total)}</div></div></div>
+        <button type="button" class="link more" data-dview="case">種類ごと・今月の全現場を見る ›</button>`;
+      return;
+    }
+    const tabs = `<div class="seg"><button type="button" data-dview="case" class="${dispView === 'case' ? 'on' : ''}">この現場</button><button type="button" data-dview="month" class="${dispView === 'month' ? 'on' : ''}">今月の全現場</button><button type="button" data-dview="simple">閉じる</button></div>`;
     if (dispView === 'month') {
       const ym = todayIso().slice(0, 7);
       const rows = state.cases.map((x) => {
@@ -890,7 +897,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderQuick(); renderWasteLog(); if (curSec === 'home') renderHome(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderQuick(); renderWasteLog(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -907,96 +914,142 @@
     lastTab[sec] = b.dataset.tab;
     try { localStorage.setItem('kaitai-jimu-nav', JSON.stringify({ sec, lastTab })); } catch (_) { /* noop */ }
     if (b.dataset.tab === 'home') renderHome();
+    if (b.dataset.tab === 'linelog') renderLineLog();
+    renderSiteHead();
     window.scrollTo(0, 0);
   });
 
-  // ---------- 画面の入口：下の5つのボタン（ホーム・現場・処分・お金・設定） ----------
+  // ---------- 画面の入口：ホーム（現場の一覧）→ 現場（処分・お金・書類・情報） ----------
+  const GROUPS = {
+    waste: { label: '処分', tabs: ['manifest'] },
+    money: { label: 'お金', tabs: ['profit', 'expense', 'lease'] },
+    docs: { label: '書類', tabs: ['estimate', 'process', 'recycle', 'greeting', 'certificate'] },
+    info: { label: '情報', tabs: ['input', 'schedule'] },
+  };
   const SECTIONS = {
     home: ['home'],
-    site: ['input', 'schedule', 'estimate', 'process', 'recycle', 'greeting', 'certificate'],
-    waste: ['manifest'],
-    money: ['profit', 'expense', 'lease'],
+    site: [].concat(...Object.values(GROUPS).map((g) => g.tabs)),
+    line: ['linelog'],
     settings: ['settings'],
   };
-  const TAB_LABELS = { input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム' };
+  const TAB_LABELS = { input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム', linelog: 'LINEの記録' };
   const secOf = (tab) => Object.keys(SECTIONS).find((k) => SECTIONS[k].includes(tab)) || 'home';
+  const groupOf = (tab) => Object.keys(GROUPS).find((g) => GROUPS[g].tabs.includes(tab));
   let curSec = 'home';
   const lastTab = {};
   $$('#tabs button').forEach((b) => { if (TAB_LABELS[b.dataset.tab]) b.textContent = TAB_LABELS[b.dataset.tab]; });
   function setSection(sec, openTab = true) {
     curSec = sec;
-    $$('#mainNav button').forEach((b) => b.classList.toggle('active', b.dataset.sec === sec));
-    const tabs = SECTIONS[sec];
-    $$('#tabs button').forEach((b) => { b.hidden = !tabs.includes(b.dataset.tab); });
-    $('#tabs').classList.toggle('single', tabs.length < 2);
+    $$('#mainNav button').forEach((b) => b.classList.toggle('active', b.dataset.sec === (sec === 'site' ? 'home' : sec)));
     document.body.dataset.section = sec;
-    if (openTab) { const t = lastTab[sec] && tabs.includes(lastTab[sec]) ? lastTab[sec] : tabs[0]; $(`#tabs button[data-tab="${t}"]`).click(); }
+    if (openTab) { const tabs = SECTIONS[sec]; const t = lastTab[sec] && tabs.includes(lastTab[sec]) ? lastTab[sec] : tabs[0]; $(`#tabs button[data-tab="${t}"]`).click(); }
+    renderSiteHead();
   }
   $('#mainNav').addEventListener('click', (e) => { const b = e.target.closest('[data-sec]'); if (b) setSection(b.dataset.sec); });
   const go = (tab) => { setSection(secOf(tab), false); $(`#tabs button[data-tab="${tab}"]`).click(); };
+  const lastOfGroup = {};
+  function openCase(id, group = 'waste') {
+    if (id && id !== state.currentId) { state.currentId = id; save(); fillForm(caseForm, cur()); renderAll(); }
+    const tabs = GROUPS[group].tabs;
+    go(lastOfGroup[group] && tabs.includes(lastOfGroup[group]) ? lastOfGroup[group] : tabs[0]);
+  }
+  // 現場の見出し：戻る・名前・状態・（処分・お金・書類・情報）の切り替え
+  function renderSiteHead() {
+    const box = $('#siteHead'); if (!box) return;
+    if (curSec !== 'site') { box.hidden = true; return; }
+    const c = cur(), active = $('#tabs button.active'), tab = active ? active.dataset.tab : 'manifest', g = groupOf(tab) || 'waste';
+    lastOfGroup[g] = tab;
+    const [, st] = caseStatus(c);
+    const sub = [c.siteAddress, st + (c.startDate ? `（${md(c.startDate)}〜${md(c.endDate)}）` : '')].filter(Boolean).join('・');
+    const chips = GROUPS[g].tabs.length > 1 ? `<div class="chips-row">${GROUPS[g].tabs.map((t) => `<button type="button" data-go="${t}" class="${t === tab ? 'on' : ''}">${TAB_LABELS[t]}</button>`).join('')}</div>` : '';
+    box.hidden = false;
+    box.innerHTML = `<button type="button" class="back" data-back>‹ 現場の一覧</button>
+      <h1 class="site-name">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</h1>
+      <p class="site-sub">${esc(sub)}</p>
+      <div class="seg4">${Object.keys(GROUPS).map((k) => `<button type="button" data-group="${k}" class="${k === g ? 'on' : ''}">${GROUPS[k].label}</button>`).join('')}</div>${chips}`;
+  }
+  $('#siteHead').addEventListener('click', (e) => {
+    if (e.target.closest('[data-back]')) { setSection('home'); return; }
+    const gb = e.target.closest('[data-group]'); if (gb) { openCase(null, gb.dataset.group); return; }
+    const t = e.target.closest('[data-go]'); if (t) go(t.dataset.go);
+  });
 
   // 押したら返事：画面の下に短く出す
   let toastTimer = null;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600); }
 
-  // ---------- ホーム：今日やること・現場の一覧・最近の処分 ----------
+  // ---------- ホーム：現場の一覧 ----------
   const WCOLOR = { wood: '#b07a3c', concrete: '#7a8794', concreteR: '#556270', mixed: '#c2410c', plastic: '#2f80ed', glass: '#8e6bbf', gypsum: '#9aa5b1', asphalt: '#3b3b3b', metal: '#4b7f52', asb: '#e03131', asbsp: '#e03131' };
   const wchip = (type) => `<span class="wchip" style="--wc:${WCOLOR[type] || '#888'}">${esc((WT[type] || {}).name || type)}</span>`;
   const md = (iso) => (iso ? iso.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2') : '');
   function caseStatus(c) {
     const t = todayIso();
     if (c.endDate && c.endDate < t) return ['done', '完了'];
-    if (c.startDate && c.startDate > t) return ['plan', '着工前'];
+    if (c.startDate && c.startDate > t) return ['plan', `${md(c.startDate)} 着工`];
     if (c.startDate) return ['live', '工事中'];
     return ['plan', '日程未定'];
   }
+  const monthDisp = (c, ym) => {
+    const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && String(m.date || '').slice(0, 7) === ym);
+    return { t: ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0), cost: ms.reduce((a, m) => a + dispOf(m), 0), n: ms.length };
+  };
+  const tTxt = (t) => `${Math.round(t * 10) / 10}t`;
+  let alertsOpen = false;
   function renderHome() {
-    const now = today();
+    const now = today(), ym = todayIso().slice(0, 7);
     const a = KJCore.collectAlerts(state, now);
-    const n = a.lease.length + a.manifest.length + a.schedule.length;
+    const heavy = state.cases.flatMap((c) => manifestsOf(c).filter(tooHeavy).map((m) => `${KJCore.caseLabel ? KJCore.caseLabel(c) : (c.clientName || '')}：${(WT[m.type] || {}).name || ''} ${m.qty}t は多すぎます（kgで入れた？ 現場を開いて直せます）`));
+    const alerts = [].concat(heavy, a.lease, a.manifest, a.schedule);
     const wd = '日月火水木金土'[now.getDay()];
-    const sec = (title, list) => (list.length ? `<h3>${title}</h3><ul class="alist">${list.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
-    const ym = todayIso().slice(0, 7);
-    const cases = state.cases.slice().sort((x, y) => { const o = { live: 0, plan: 1, done: 2 }; return o[caseStatus(x)[0]] - o[caseStatus(y)[0]]; });
-    const recent = state.cases.flatMap((c) => manifestsOf(c).filter((m) => num(m.qty) > 0).map((m) => ({ c, m })))
-      .sort((x, y) => String(y.m.lineAt || y.m.date).localeCompare(String(x.m.lineAt || x.m.date))).slice(0, 6);
+    const order = { live: 0, plan: 1, done: 2 };
+    const cases = state.cases.slice().sort((x, y) => order[caseStatus(x)[0]] - order[caseStatus(y)[0]]);
+    const allT = cases.reduce((s2, c) => s2 + monthDisp(c, ym).t, 0);
     $('#homeOut').innerHTML = `
-      <p class="today">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</p>
-      <section class="card ${n ? 'warn-card' : 'ok-card'}">
-        <h2 class="card-title">${n ? `今日の注意 <span class="count">${n}件</span>` : '✅ 今日の注意はありません'}</h2>
-        ${sec('リース', a.lease)}${sec('マニフェスト', a.manifest)}${sec('届出・挨拶', a.schedule)}
-      </section>
-      <div class="actions">
-        <button type="button" class="act" data-act="waste"><span class="ic">🚛</span>捨てた記録をつける</button>
-        <button type="button" class="act" data-act="newcase"><span class="ic">🏗</span>新しい現場を作る</button>
-        <button type="button" class="act" data-act="expense"><span class="ic">⛽</span>経費をつける</button>
-      </div>
-      <section class="card">
-        <h2 class="card-title">現場</h2>
-        <ul class="cases">${cases.map((c) => {
-          const [k, label] = caseStatus(c);
-          const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && String(m.date || '').slice(0, 7) === ym);
-          const t = ms.reduce((s2, m) => s2 + num(m.qty), 0), cost = ms.reduce((s2, m) => s2 + dispOf(m), 0);
-          return `<li><button type="button" class="case-card" data-open="${c.id}">
-            <span class="st ${k}">${label}</span>
-            <span class="cname">${esc(caseName(c))}</span>
-            <span class="caddr">${esc(c.siteAddress || '住所未入力')}${c.startDate ? `　${md(c.startDate)}〜${md(c.endDate)}` : ''}</span>
-            <span class="cdisp">今月の処分 <b>${(Math.round(t * 100) / 100)}t</b>・¥${yen(cost)}</span>
-          </button></li>`;
-        }).join('')}</ul>
-      </section>
-      <section class="card">
-        <h2 class="card-title">最近の処分</h2>
-        ${recent.length ? `<ul class="wlog">${recent.map(({ c, m }) => `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${m.qty}t</b><span class="w">${esc(caseName(c))}・${esc(m.disposer || '処分場未入力')}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}</li>`).join('')}</ul>` : '<p class="empty">まだありません。「捨てた記録をつける」か、公式LINEから送ってください。</p>'}
-      </section>`;
+      <h1 class="h-date">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</h1>
+      <p class="h-sub">現場 ${cases.length}件・今月の処分 ${tTxt(allT)}</p>
+      ${alerts.length ? `<button type="button" class="alert-pill" data-alerts><span>⚠ 注意が ${alerts.length}件 あります</span><span>${alertsOpen ? '閉じる' : '見る ›'}</span></button>
+        ${alertsOpen ? `<ul class="alert-list">${alerts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}` : '<p class="ok-line">✓ 今日の注意はありません</p>'}
+      <p class="sec-label">現場</p>
+      <ul class="rows">${cases.map((c) => {
+        const [k, label] = caseStatus(c), d = monthDisp(c, ym);
+        return `<li><button type="button" class="row" data-open="${c.id}"><span class="dot ${k}"></span>
+          <span class="r-main"><span class="r-title">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</span><span class="r-sub">${esc([c.siteAddress, label].filter(Boolean).join('・'))}</span></span>
+          <span class="r-num">${d.n ? `<b>${tTxt(d.t)}</b><span class="r-sub">¥${yen(d.cost)}</span>` : '<b class="mut">—</b>'}</span><span class="chev">›</span></button></li>`;
+      }).join('')}</ul>
+      <button type="button" class="btn ghost wide" data-act="newcase">＋ 新しい現場を作る</button>
+      <button type="button" class="fab" data-act="record">＋ 記録する</button>`;
   }
   $('#homeOut').addEventListener('click', (e) => {
-    const open = e.target.closest('[data-open]');
-    if (open) { state.currentId = open.dataset.open; save(); fillForm(caseForm, cur()); renderAll(); go('manifest'); return; }
+    if (e.target.closest('[data-alerts]')) { alertsOpen = !alertsOpen; renderHome(); return; }
+    const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'waste'); return; }
     const act = e.target.closest('[data-act]'); if (!act) return;
-    if (act.dataset.act === 'waste') { go('manifest'); setTimeout(() => $('#qwQty').focus(), 50); }
-    if (act.dataset.act === 'newcase') { $('#newCase').click(); go('input'); }
-    if (act.dataset.act === 'expense') { go('expense'); setTimeout(() => $('#expAmount').focus(), 50); }
+    if (act.dataset.act === 'newcase') { $('#newCase').click(); openCase(state.currentId, 'info'); }
+    if (act.dataset.act === 'record') {
+      const live = state.cases.filter((c) => caseStatus(c)[0] === 'live');
+      if (state.cases.length === 1 || live.length === 1) { openCase((live[0] || state.cases[0]).id, 'waste'); openQuick(); return; }
+      $('#pickCaseList').innerHTML = state.cases.map((c) => `<li><button type="button" class="row" data-pick="${c.id}"><span class="r-main"><span class="r-title">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</span><span class="r-sub">${esc(c.siteAddress || '')}</span></span><span class="chev">›</span></button></li>`).join('');
+      $('#pickCase').hidden = false;
+    }
+  });
+  $('#pickCase').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (b) { $('#pickCase').hidden = true; openCase(b.dataset.pick, 'waste'); openQuick(); return; }
+    if (e.target.id === 'pickCase' || e.target.id === 'pickCaseClose') $('#pickCase').hidden = true;
+  });
+
+  // ---------- LINEの記録（全現場） ----------
+  function renderLineLog() {
+    const list = state.cases.flatMap((c) => manifestsOf(c).filter((m) => m.via === 'line').map((m) => ({ c, m })))
+      .sort((x, y) => String(y.m.lineAt || y.m.date).localeCompare(String(x.m.lineAt || x.m.date)));
+    $('#lineLogOut').innerHTML = `<h1 class="h-date">LINEの記録</h1>
+      <p class="h-sub">公式LINEに送られた記録です（全部の現場）。押すとその現場が開きます。</p>
+      <ul class="rows">${list.map(({ c, m }) => `<li><button type="button" class="row" data-open="${c.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${esc(m.qty)}${(WT[m.type] || {}).unit || 't'}</span><span class="r-sub">${md(m.date)}・${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}・${esc(m.disposer || '処分場未入力')}</span></span><span class="r-num"><b>¥${yen(dispOf(m))}</b></span></button></li>`).join('')
+        || '<li class="empty-row">まだありません。運転手さんが公式LINEに「ヒラヤマ 伏見 シバ 3t」のように送ると、ここに入ります。</li>'}</ul>
+      <button type="button" class="btn ghost wide" data-tolink>LINEの連携・運転手さんの追加 ›</button>`;
+  }
+  $('#lineLogOut').addEventListener('click', (e) => {
+    const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'waste'); return; }
+    if (e.target.closest('[data-tolink]')) { setSection('settings'); setTimeout(() => $('#lineInBox')?.scrollIntoView({ block: 'start' }), 50); }
   });
 
   // ---------- 処分：1行で記録 ----------
@@ -1007,6 +1060,10 @@
     if (!sel.options.length) sel.innerHTML = WASTE_TYPES.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('');
     if (!$('#qwDate').value) $('#qwDate').value = todayIso();
   }
+  function openQuick() { $('#quickWaste').hidden = false; $('#qwOpen').hidden = true; setTimeout(() => $('#qwQty').focus(), 60); }
+  function closeQuick() { $('#quickWaste').hidden = true; $('#qwOpen').hidden = false; }
+  $('#qwOpen').addEventListener('click', openQuick);
+  $('#qwCancel').addEventListener('click', closeQuick);
   $('#quickWaste').addEventListener('submit', (e) => {
     e.preventDefault();
     let qty = num($('#qwQty').value);
@@ -1019,6 +1076,7 @@
     $('#qwQty').value = '';
     save(); renderAll();
     toast(`記録しました：${(WT[$('#qwType').value] || {}).name} ${qty}t${kgNote}`);
+    closeQuick();
   });
   // 捨てた記録の一覧（この現場・新しい順）
   function renderWasteLog() {
@@ -1027,8 +1085,10 @@
       .sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.lineAt || '').localeCompare(String(x.lineAt || '')));
     $('#wasteLog').innerHTML = list.length ? list.map((m) => {
       const late = manifestChecks(m).some((x) => x.state === 'late');
-      return `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</b><span class="w">${esc(m.disposer || '処分場未入力')}</span><span class="y">¥${yen(dispOf(m))}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}${late ? '<span class="chip late">返送期限切れ</span>' : ''}${fixKgHtml(m)}<button type="button" class="link" data-edit="${m.id}">詳しく</button></li>`;
-    }).join('') : '<li class="empty">まだ記録がありません。上の「記録する」か、公式LINEから記録できます。</li>';
+      return `<li><button type="button" class="row" data-edit="${m.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</span>
+        <span class="r-sub">${md(m.date)}・${esc(m.disposer || '処分場未入力')}${m.via === 'line' ? '・<span class="line-t">LINE</span>' : ''}${late ? '・<span class="neg">返送期限切れ</span>' : ''}</span></span>
+        <span class="r-num"><b>${tooHeavy(m) ? '要確認' : '¥' + yen(dispOf(m))}</b></span></button>${tooHeavy(m) ? `<div class="fixrow">${fixKgHtml(m)}</div>` : ''}</li>`;
+    }).join('') : '<li class="empty-row">まだ記録がありません。上の「＋ 捨てた記録をつける」か、公式LINEから記録できます。</li>';
   }
   // 「○tに直す」：kg で入れた重さを t に直す（処分の一覧・詳しい入力のどちらからでも）
   document.addEventListener('click', (e) => {
@@ -1319,6 +1379,7 @@
     try { saved = JSON.parse(localStorage.getItem('kaitai-jimu-nav')); } catch (_) { /* noop */ }
     if (saved && saved.lastTab) Object.assign(lastTab, saved.lastTab);
     setSection(saved && SECTIONS[saved.sec] ? saved.sec : 'home');
+    window.KJNav = { go, openCase, setSection }; // テスト・他の部品から画面を開くため
   })();
 
   // クラウド同期（cloud.js）から使う窓口

@@ -17,13 +17,12 @@
 
 <nav class="mainnav no-print" id="mainNav" aria-label="メニュー">
   <button data-sec="home"><span class="ic">🏠</span><span>ホーム</span></button>
-  <button data-sec="site"><span class="ic">🏗</span><span>現場</span></button>
-  <button data-sec="waste"><span class="ic">🚛</span><span>処分</span></button>
-  <button data-sec="money"><span class="ic">💰</span><span>お金</span></button>
+  <button data-sec="line"><span class="ic">💬</span><span>LINEの記録</span></button>
   <button data-sec="settings"><span class="ic">⚙</span><span>設定</span></button>
 </nav>
 <nav class="tabs no-print" id="tabs">
   <button data-tab="home">ホーム</button>
+  <button data-tab="linelog">LINEの記録</button>
   <button data-tab="input" class="active">① 案件入力</button>
   <button data-tab="schedule">② 期限・チェック</button>
   <button data-tab="estimate">③ 見積書</button>
@@ -70,7 +69,15 @@
 </div>
 
 <div id="toast" class="toast" role="status" hidden></div>
+<div id="pickCase" class="sheet-back" hidden>
+  <div class="sheet" role="dialog" aria-label="どの現場の記録ですか">
+    <div class="sheet-title">どの現場の記録ですか？</div>
+    <ul id="pickCaseList" class="plist"></ul>
+    <button type="button" class="btn ghost big" id="pickCaseClose">やめる</button>
+  </div>
+</div>
 <main>
+  <div id="siteHead" class="sitehead no-print" hidden></div>
   <!-- ① 案件入力 -->
   <section id="tab-input" class="tab active no-print">
     <p class="hint">ここに入力するだけで、ほかのタブの書類が全部自動で作られます（入力内容はこの端末のブラウザに自動保存）。</p>
@@ -148,25 +155,24 @@
   <!-- 書類系 -->
   <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="見積書">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span></div><div class="paper" id="estimateOut"></div></section>
   <section id="tab-home" class="tab no-print"><div id="homeOut"></div></section>
+  <section id="tab-linelog" class="tab no-print"><div id="lineLogOut"></div></section>
   <section id="tab-profit" class="tab no-print"><div id="profitOut"></div></section>
   <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="工程表">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
   <section id="tab-manifest" class="tab no-print">
-    <form id="quickWaste" class="quick card">
-      <div class="quick-title">＋ 捨てた記録をつける <span class="hint">（この現場：<b id="quickCase"></b>）</span></div>
+    <div id="dispTop"></div>
+    <button type="button" class="btn big" id="qwOpen">＋ 捨てた記録をつける</button>
+    <form id="quickWaste" class="quick card" hidden>
+      <div class="quick-title">捨てた記録をつける <span class="hint">（<b id="quickCase"></b>）</span></div>
       <div class="quick-row">
         <label for="qwType">ゴミ<select id="qwType"></select></label>
         <label for="qwQty">重さ（t）<input id="qwQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 3"></label>
         <label for="qwSite">処分場<input id="qwSite" list="disposerList" placeholder="例 ヒラヤマ"></label>
         <label for="qwDate">日付<input id="qwDate" type="date"></label>
       </div>
-      <button class="btn big" type="submit">記録する</button>
-      <p class="hint">公式LINEに「処分場 現場 種類 重さ」を送っても記録できます。</p>
+      <div class="quick-btns"><button class="btn big" type="submit">記録する</button><button class="btn ghost" type="button" id="qwCancel">やめる</button></div>
     </form>
-    <div id="dispTop"></div>
-    <section class="card">
-      <h2 class="card-title">捨てた記録（新しい順）</h2>
-      <ul id="wasteLog" class="wlog"></ul>
-    </section>
+    <p class="sec-label">記録（新しい順）</p>
+    <ul id="wasteLog" class="rows"></ul>
     <div id="manifestAlerts"></div>
     <details id="manifestDetail" class="card fold">
       <summary>マニフェストの詳しい入力（交付番号・業者・B2/D/E票の返送日）</summary>

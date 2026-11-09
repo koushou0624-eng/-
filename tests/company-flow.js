@@ -29,7 +29,7 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
   };
   const st = (p) => p.evaluate(() => KJApp.getState());
   // 新しい画面：下の5つのボタンから開く
-  const toInput = async (p) => { await p.click('#mainNav [data-sec=site]'); await p.click('#tabs [data-tab=input]'); };
+  const toInput = (p) => p.evaluate(() => KJNav.go('input'));
   const toSettings = (p) => p.click('#mainNav [data-sec=settings]');
 
   // 1) 代表が登録 → 会社を作る
