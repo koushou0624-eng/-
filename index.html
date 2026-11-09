@@ -22,6 +22,7 @@
   <button data-tab="estimate">③ 見積書</button>
   <button data-tab="profit">💰 利益チェック</button>
   <button data-tab="process">📅 工程表</button>
+  <button data-tab="manifest">🚛 マニフェスト</button>
   <button data-tab="recycle">④ リサイクル法 届出下書き</button>
   <button data-tab="greeting">⑤ 近隣挨拶文</button>
   <button data-tab="certificate">⑥ 取毀証明書</button>
@@ -106,6 +107,19 @@
   <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="estimateOut"></div></section>
   <section id="tab-profit" class="tab no-print"><div id="profitOut"></div></section>
   <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
+  <section id="tab-manifest" class="tab no-print">
+    <div id="manifestAlerts"></div>
+    <h2>この案件のマニフェスト</h2>
+    <p class="hint">搬出1回（1枚）ごとに登録します。返送された票の日付を入れると「済」になります。</p>
+    <div class="toolbar">
+      <button class="btn" id="addManifest">＋ 1枚追加</button>
+      <button class="btn ghost" id="bulkManifest">見込みから品目ごとに作成</button>
+    </div>
+    <div id="manifestList"></div>
+    <datalist id="carrierList"></datalist><datalist id="disposerList"></datalist>
+    <div id="manifestCompare"></div>
+    <div id="manifestReport"></div>
+  </section>
   <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
   <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="greetingOut"></div></section>
   <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
@@ -137,6 +151,11 @@
         <label>アスベスト レベル1・2（円/㎡）<input name="pAsb12" type="number"></label>
         <label>養生・足場（円/㎡・延床）<input name="pScaffold" type="number"></label>
         <label>諸経費（％）<input name="pOverhead" type="number"></label>
+      </fieldset>
+      <fieldset>
+        <legend>マニフェスト</legend>
+        <label>いつもの収集運搬業者<input name="defCarrier" placeholder="〇〇運輸（許可番号 〇〇〇）"></label>
+        <label>いつもの処分業者<input name="defDisposer" placeholder="〇〇リサイクルセンター"></label>
       </fieldset>
       <fieldset>
         <legend>原価（利益チェック用）</legend>

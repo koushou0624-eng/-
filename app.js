@@ -16,7 +16,22 @@
     cLabor: 18000, cWorkers: 3, cMove: 35000, cMachine: 10000, cTruckLoad: 4, cTruck: 15000,
     cDispConcrete: 3000, cDispWood: 12000, cDispMixed: 25000, cDispDebris: 8000,
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
+    defCarrier: '', defDisposer: '',
   };
+  // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
+  const WASTE_TYPES = [
+    { id: 'concrete', name: 'がれき類（コンクリートがら）', unit: 't' },
+    { id: 'asphalt', name: 'がれき類（アスファルト・コンクリートがら）', unit: 't' },
+    { id: 'wood', name: '木くず', unit: 't' },
+    { id: 'mixed', name: '混合廃棄物（安定型・管理型混合）', unit: 't' },
+    { id: 'plastic', name: '廃プラスチック類', unit: 't' },
+    { id: 'metal', name: '金属くず', unit: 't' },
+    { id: 'glass', name: 'ガラスくず・陶磁器くず', unit: 't' },
+    { id: 'gypsum', name: '廃石膏ボード', unit: 't' },
+    { id: 'asb', name: '石綿含有産業廃棄物', unit: '㎥' },
+    { id: 'asbsp', name: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
+  ];
+  const WT = Object.fromEntries(WASTE_TYPES.map((w) => [w.id, w]));
   // 延床1㎡あたりの廃棄物量の目安（トン）
   // c:コンクリート塊 w:木材 a:アスファルト m:混合廃棄物 fe:鉄スクラップ
   const WASTE_FACTOR = {
@@ -59,7 +74,7 @@
       structure: 'wood', floors: 2, floorArea: '', use: '専用住宅', builtYear: '',
       noHeavy: false, narrowRoad: false, debrisM3: 0, blockM: 0, concreteM2: 0, trees: 0,
       asbestos: 'none', asbestosM2: 0, startDate: '', endDate: '',
-      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '',
+      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '', manifests: [],
     };
   }
 
@@ -217,7 +232,8 @@
     item(true, '近隣挨拶', addDays(c.startDate, -7), '着工1週間〜10日前が目安。→「⑤ 近隣挨拶文」タブ');
     item(!!c.narrowRoad, '道路使用許可（所轄警察署）', addDays(c.startDate, -7), '道路上に車両を止めて作業する場合に必要。処理に数日かかるため早めに申請。');
     item(true, '建物取毀証明書の発行 → 施主の滅失登記', addMonths(c.endDate, 1), '解体完了後、施主が1か月以内に法務局へ建物滅失登記。→「⑥ 取毀証明書」タブ');
-    item(true, 'マニフェスト（産業廃棄物管理票）の交付・回収', null, '搬出ごとに交付。紙の場合はB2・D票90日、E票180日以内の返送を確認。');
+    const ms = manifestsOf(c), open = ms.filter((m) => m.kind === 'paper' && !(m.b2 && m.d && m.e)).length;
+    item(true, 'マニフェスト（産業廃棄物管理票）の交付・回収', null, `搬出ごとに交付。紙の場合はB2・D票90日、E票180日以内の返送を確認。登録 ${ms.length}枚${open ? `（返送待ち ${open}枚）` : ''} →「🚛 マニフェスト」タブ`);
     $('#scheduleOut').innerHTML = `<h2>期限・やることチェック</h2>${items.join('')}`;
   }
 
@@ -279,7 +295,7 @@
         <span>廃棄物 <b>${(r.w.concrete + r.w.wood + r.w.asphalt + r.w.mixed).toFixed(1)}t</b>${r.w.estimated ? '（目安）' : ''}</span>
         <span>鉄スクラップ <b>約${r.w.iron.toFixed(2)}t</b></span>
       </div>
-      <div class="table-wrap"><table class="cost"><thead><tr><th>原価の内訳</th><th>金額</th></tr></thead><tbody>${rows}</tbody>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>原価の内訳</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th>原価 合計</th><td class="num"><b>¥${yen(r.cost)}</b></td></tr></tfoot></table></div>
       <p class="hint">原価の単価は「⚙ 会社・単価設定」の「原価」で自社の値に変えられます。数字は目安です。</p>`;
   }
@@ -311,6 +327,148 @@
       const iso = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
       $('#processOut').insertAdjacentHTML('beforeend', `<p class="small no-print">完了予定日（${fmtIso(c.endDate) || '未入力'}）を工程表の最終日 ${fmtDate(last)} に合わせますか？ <button class="btn ghost" data-set-end="${iso}">合わせる</button></p>`);
     }
+  }
+
+  // ---------- マニフェスト ----------
+  const manifestsOf = (c) => (Array.isArray(c.manifests) ? c.manifests : (c.manifests = []));
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayIso = () => isoOf(new Date());
+  const caseName = (c) => `${c.clientName || '（施主未入力）'}様邸`;
+
+  // 電子マニフェストの登録期限：引渡しから3日以内（土日を除いた目安）
+  function plus3BizDays(iso) {
+    const d = new Date(iso + 'T00:00:00'); let n = 0;
+    while (n < 3) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n++; }
+    return d;
+  }
+
+  // 返送・報告の期限と状態
+  function manifestChecks(m) {
+    if (!m.date) return [];
+    const sp = WT[m.type]?.sp, out = [];
+    const st = (label, doneIso, due) => {
+      if (doneIso) return { label, state: 'done', text: `${label} 済` };
+      const diff = Math.round((due - today()) / 86400000);
+      if (diff < 0) return { label, state: 'late', due, text: `${label} ${-diff}日超過`, report: addDays(isoOf(due), 30) };
+      return { label, state: diff <= 14 ? 'soon' : 'wait', due, text: `${label} あと${diff}日` };
+    };
+    if (m.kind === 'electronic') {
+      out.push(st('JWNET登録', m.reg, plus3BizDays(m.date)));
+      out.push(st('運搬終了報告', m.b2, addDays(m.date, sp ? 60 : 90)));
+      out.push(st('処分終了報告', m.d, addDays(m.date, sp ? 60 : 90)));
+      out.push(st('最終処分報告', m.e, addDays(m.date, 180)));
+    } else {
+      out.push(st('B2票', m.b2, addDays(m.date, sp ? 60 : 90)));
+      out.push(st('D票', m.d, addDays(m.date, sp ? 60 : 90)));
+      out.push(st('E票', m.e, addDays(m.date, 180)));
+    }
+    return out;
+  }
+
+  const chipsHtml = (m) => {
+    const ch = manifestChecks(m);
+    if (!ch.length) return '<span class="chip">交付日を入れると期限を計算します</span>';
+    return ch.map((x) => `<span class="chip ${x.state}" title="${x.due ? '期限 ' + fmtDate(x.due) : ''}">${x.text}</span>`).join('');
+  };
+
+  function renderManifestList(c) {
+    const ms = manifestsOf(c);
+    const opt = (sel) => WASTE_TYPES.map((w) => `<option value="${w.id}" ${w.id === sel ? 'selected' : ''}>${w.name}</option>`).join('');
+    $('#manifestList').innerHTML = ms.length ? ms.map((m, i) => `
+      <div class="mcard" data-mid="${m.id}">
+        <div class="mhead"><b>No.${i + 1}</b><span class="chips" id="chips-${m.id}">${chipsHtml(m)}</span>
+          <button class="btn ghost small" data-mdel="${m.id}">削除</button></div>
+        <div class="mgrid">
+          <label>種類<select data-f="kind"><option value="paper" ${m.kind !== 'electronic' ? 'selected' : ''}>紙</option><option value="electronic" ${m.kind === 'electronic' ? 'selected' : ''}>電子（JWNET）</option></select></label>
+          <label>交付番号<input data-f="no" value="${esc(m.no)}" placeholder="例 1234567890"></label>
+          <label>交付日（搬出日）<input data-f="date" type="date" value="${esc(m.date)}"></label>
+          <label>廃棄物の種類<select data-f="type">${opt(m.type)}</select></label>
+          <label>数量（${WT[m.type]?.unit || 't'}）<input data-f="qty" type="number" min="0" step="0.01" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"></label>
+          <label>収集運搬業者<input data-f="carrier" list="carrierList" value="${esc(m.carrier)}"></label>
+          <label>処分業者<input data-f="disposer" list="disposerList" value="${esc(m.disposer)}"></label>
+          ${m.kind === 'electronic' ? `<label>JWNET登録日<input data-f="reg" type="date" value="${esc(m.reg)}"></label>` : ''}
+          <label>${m.kind === 'electronic' ? '運搬終了報告日' : 'B2票 返送日'}<input data-f="b2" type="date" value="${esc(m.b2)}"></label>
+          <label>${m.kind === 'electronic' ? '処分終了報告日' : 'D票 返送日'}<input data-f="d" type="date" value="${esc(m.d)}"></label>
+          <label>${m.kind === 'electronic' ? '最終処分終了報告日' : 'E票 返送日'}<input data-f="e" type="date" value="${esc(m.e)}"></label>
+        </div>
+      </div>`).join('') : '<p class="empty">まだマニフェストがありません。「＋ 1枚追加」か「見込みから品目ごとに作成」で始めてください。</p>';
+    const names = (k) => [...new Set(state.cases.flatMap((x) => manifestsOf(x).map((m) => m[k])).concat(k === 'carrier' ? state.settings.defCarrier : state.settings.defDisposer).filter(Boolean))];
+    $('#carrierList').innerHTML = names('carrier').map((n) => `<option value="${esc(n)}">`).join('');
+    $('#disposerList').innerHTML = names('disposer').map((n) => `<option value="${esc(n)}">`).join('');
+  }
+
+  // 全案件の返送漏れ・期限間近
+  function renderManifestAlerts() {
+    const late = [], soon = [];
+    state.cases.forEach((c) => manifestsOf(c).forEach((m, i) => manifestChecks(m).forEach((x) => {
+      const row = { c, m, i, x };
+      if (x.state === 'late') late.push(row); else if (x.state === 'soon') soon.push(row);
+    })));
+    const line = ({ c, m, i, x }) => `<li><button class="link" data-goto="${c.id}">${esc(caseName(c))}</button> No.${i + 1}（${esc(WT[m.type]?.name || '')}${m.no ? '・' + esc(m.no) : ''}）— <b>${x.label}</b> ${x.state === 'late' ? `期限 ${fmtDate(x.due)} を過ぎています。返送されない場合は状況を確認し、<b>${fmtDate(x.report)}</b>までに都道府県等へ措置内容等報告書を提出` : `期限 ${fmtDate(x.due)}`}</li>`;
+    $('#manifestAlerts').innerHTML = `
+      <div class="alertbox ${late.length ? 'bad' : soon.length ? 'mid' : 'good'}">
+        <b>全案件のマニフェスト：</b>${late.length ? `期限超過 ${late.length}件` : '期限超過なし'}${soon.length ? `／2週間以内に期限 ${soon.length}件` : ''}
+        ${late.length || soon.length ? `<ul>${late.concat(soon).map(line).join('')}</ul>` : ''}
+      </div>`;
+  }
+
+  // 見込み（見積時）と実績（マニフェスト）の比較
+  function renderManifestCompare(c) {
+    const w = wasteOf(c), ms = manifestsOf(c);
+    const act = (ids) => ms.filter((m) => ids.includes(m.type) && (WT[m.type]?.unit === 't')).reduce((a, m) => a + num(m.qty), 0);
+    const rows = [
+      ['コンクリートがら', w.concrete, act(['concrete'])],
+      ['アスファルト・コンクリートがら', w.asphalt, act(['asphalt'])],
+      ['木くず', w.wood, act(['wood'])],
+      ['混合廃棄物など', w.mixed, act(['mixed', 'plastic', 'glass', 'gypsum'])],
+    ];
+    const tr = rows.map(([n, e, a]) => {
+      const diff = a - e;
+      return `<tr><td>${n}</td><td class="num">${e.toFixed(1)}</td><td class="num">${a ? a.toFixed(1) : '—'}</td><td class="num ${a && diff > 0.05 ? 'over' : ''}">${a ? (diff >= 0 ? '+' : '') + diff.toFixed(1) : ''}</td></tr>`;
+    }).join('');
+    // 実績が入っている品目だけで処分費のずれを出す
+    const s = state.settings, price = [num(s.cDispConcrete), num(s.cDispConcrete), num(s.cDispWood), num(s.cDispMixed)];
+    const extra = rows.reduce((a, [, e, act], i) => a + (act > 0 ? (act - e) * price[i] : 0), 0);
+    const any = rows.some(([, , act]) => act > 0);
+    $('#manifestCompare').innerHTML = `
+      <h2>見込みと実績</h2>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>品目</th><th class="num">見込み（t）</th><th class="num">実績（t）</th><th class="num">差</th></tr></thead><tbody>${tr}</tbody></table></div>
+      <p class="hint">${any ? `実績にもとづく処分費は（実績を入れた品目だけで比べると）、見込みより <b>${extra >= 0 ? '¥' + yen(extra) + ' 多い' : '¥' + yen(-extra) + ' 少ない'}</b> 計算です。差が大きい品目は、次の見積の係数や単価を見直しましょう。` : 'マニフェストに数量を入れると、見積のときの見込みとの差と、処分費のずれが分かります。'}</p>`;
+  }
+
+  // 交付等状況報告書（年1回・6月30日まで・紙マニフェスト分）の集計
+  function fiscalYearOf(iso) { const d = new Date(iso + 'T00:00:00'); return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; }
+  const prefOf = (addr) => (String(addr || '').match(/^(東京都|北海道|京都府|大阪府|.{2,3}?県)/) || [, '（都道府県不明）'])[1];
+  let reportFy = null;
+  function renderManifestReport() {
+    const t = today();
+    const defFy = t.getMonth() < 6 ? t.getFullYear() - 1 : t.getFullYear(); // 4〜6月は前年度分の提出時期
+    const all = state.cases.flatMap((c) => manifestsOf(c).filter((m) => m.date && m.kind !== 'electronic').map((m) => ({ c, m })));
+    const years = [...new Set(all.map(({ m }) => fiscalYearOf(m.date)).concat(defFy))].sort((a, b) => b - a);
+    const fy = reportFy ?? defFy;
+    const groups = {};
+    all.filter(({ m }) => fiscalYearOf(m.date) === fy).forEach(({ c, m }) => {
+      const key = [prefOf(c.siteAddress), WT[m.type]?.name || m.type, m.carrier || '（未入力）', m.disposer || '（未入力）'].join('\u0001');
+      const g = groups[key] || (groups[key] = { n: 0, qty: 0, unit: WT[m.type]?.unit || 't' });
+      g.n++; g.qty += num(m.qty);
+    });
+    const keys = Object.keys(groups).sort();
+    const rows = keys.map((k) => { const [p, ty, ca, di] = k.split('\u0001'); const g = groups[k]; return `<tr><td>${esc(p)}</td><td>${esc(ty)}</td><td class="num">${g.n}</td><td class="num">${g.qty.toFixed(2)} ${g.unit}</td><td>${esc(ca)}</td><td>${esc(di)}</td></tr>`; }).join('');
+    $('#manifestReport').innerHTML = `
+      <h2>交付等状況報告書の集計</h2>
+      <p class="hint">紙マニフェストを交付した排出事業者（解体工事では元請業者）は、毎年<b>6月30日</b>までに前年度（4月〜翌3月）の交付状況を、現場がある都道府県等へ報告します。電子マニフェスト分はJWNETが報告するので不要です。</p>
+      <label class="inline">年度 <select id="reportFy">${years.map((y) => `<option value="${y}" ${y === fy ? 'selected' : ''}>${y}年度（${y + 1}年6月30日まで）</option>`).join('')}</select></label>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>現場の都道府県</th><th>廃棄物の種類</th><th class="num">交付枚数</th><th class="num">排出量</th><th>運搬業者</th><th>処分業者</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="empty">この年度の紙マニフェストはありません</td></tr>'}</tbody></table></div>
+      <p class="hint">提出は各自治体の様式（様式第三号）で行ってください。この表は転記用の集計です。</p>`;
+  }
+
+  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCompare(c); renderManifestReport(); }
+  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); }
+
+  function newManifest(c, extra = {}) {
+    const s = state.settings;
+    return { id: uid(), kind: 'paper', no: '', date: c.startDate || todayIso(), type: 'concrete', qty: '', carrier: s.defCarrier || '', disposer: s.defDisposer || '', reg: '', b2: '', d: '', e: '', ...extra };
   }
 
   function renderRecycle(c, s) {
@@ -384,7 +542,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -402,6 +560,43 @@
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-set-end]'); if (!b) return;
     cur().endDate = b.dataset.setEnd; save(); fillForm(caseForm, cur()); renderAll();
+  });
+  // マニフェストの入力（入力中のカードは描き直さず、期限表示と集計だけ更新）
+  $('#manifestList').addEventListener('input', (e) => {
+    const el = e.target, card = el.closest('[data-mid]'); if (!card || !el.dataset.f) return;
+    const m = manifestsOf(cur()).find((x) => x.id === card.dataset.mid); if (!m) return;
+    m[el.dataset.f] = el.value; save();
+    if (el.dataset.f === 'kind' || el.dataset.f === 'type') { renderManifestList(cur()); }
+    else { const ch = $('#chips-' + m.id); if (ch) ch.innerHTML = chipsHtml(m); }
+    refreshManifestSummary(cur());
+  });
+  const mdelArmed = {};
+  $('#manifestList').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mdel]'); if (!b) return;
+    const id = b.dataset.mdel;
+    if (!mdelArmed[id]) { b.textContent = 'もう一度押すと削除'; mdelArmed[id] = setTimeout(() => { b.textContent = '削除'; delete mdelArmed[id]; }, 3000); return; }
+    clearTimeout(mdelArmed[id]); delete mdelArmed[id];
+    const c = cur(); c.manifests = manifestsOf(c).filter((m) => m.id !== id); save(); renderAll();
+  });
+  $('#addManifest').addEventListener('click', () => {
+    const c = cur(), ms = manifestsOf(c), last = ms[ms.length - 1];
+    ms.push(newManifest(c, last ? { kind: last.kind, type: last.type, carrier: last.carrier, disposer: last.disposer, date: last.date } : {}));
+    save(); renderAll();
+  });
+  $('#bulkManifest').addEventListener('click', () => {
+    const c = cur(), w = wasteOf(c), ms = manifestsOf(c);
+    const add = (type, est) => { if (est > 0) ms.push(newManifest(c, { type, hint: `見込み ${est.toFixed(1)}` })); };
+    add('concrete', w.concrete); add('asphalt', w.asphalt); add('wood', w.wood); add('mixed', w.mixed);
+    if (c.asbestos === 'level3') ms.push(newManifest(c, { type: 'asb' }));
+    if (c.asbestos === 'level12') ms.push(newManifest(c, { type: 'asbsp' }));
+    save(); renderAll();
+  });
+  $('#manifestAlerts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-goto]'); if (!b) return;
+    state.currentId = b.dataset.goto; save(); fillForm(caseForm, cur()); renderAll();
+  });
+  $('#manifestReport').addEventListener('change', (e) => {
+    if (e.target.id === 'reportFy') { reportFy = parseInt(e.target.value, 10); renderManifestReport(); }
   });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });
   $('#newCase').addEventListener('click', () => {
