@@ -23,6 +23,8 @@
 - 表の定義は `supabase/schema.sql`。本人のデータしか読み書きできない設定（Row Level Security）にしています
 - 新しいアカウントの登録は締め切っています。ログインする人は Supabase の管理画面（Authentication → Users → Add user）で追加します
 - 計算（リース・マニフェストの期限、毎朝の通知文）は `core.js` にまとめ、画面と通知で同じものを使います
+- 毎朝の LINE 通知：`supabase/functions/daily-alerts`（Edge Function）を pg_cron が毎朝 7:00（日本時間）に呼び出します。LINE のトークンと宛先は「⚙ 会社・単価設定」→「毎朝のLINE通知」で保存し、Supabase の `kj_notify` にだけ置きます（端末には保存しません）
+- Edge Function を更新するときは `supabase/deploy-function.sh`（core.js も一緒に配置）
 
 ## 使い方
 

@@ -248,6 +248,20 @@
       <p class="hint">入力した内容は自動でネットに保存され、ほかの端末でも同じデータが見られます。</p>
       <button type="button" id="logoutBtn" class="btn ghost">ログアウト</button>
     </fieldset>
+    <fieldset id="lineBox" class="cloudbox" hidden>
+      <legend>毎朝のLINE通知</legend>
+      <p class="hint">毎朝7時ごろ、月極が近いリース・マニフェストの期限・届出の期限など、注意があるときだけLINEに届きます。</p>
+      <label for="lineToken">チャネルアクセストークン（LINE Developers の「Messaging API設定」で発行）
+        <input id="lineToken" type="password" autocomplete="off" placeholder="貼り付けてください"></label>
+      <label for="lineUserId">あなたのユーザーID（LINE Developers の「チャネル基本設定」の一番下。U から始まる文字）
+        <input id="lineUserId" autocomplete="off" placeholder="U から始まる33文字"></label>
+      <label class="check"><input type="checkbox" id="lineEnabled" checked> 毎朝の通知を送る</label>
+      <div class="toolbar">
+        <button type="button" id="lineSave" class="btn">保存</button>
+        <button type="button" id="lineTest" class="btn ghost">テスト送信</button>
+      </div>
+      <p id="lineMsg" class="hint" role="status"></p>
+    </fieldset>
     <p><button id="resetAll" class="btn ghost">すべてのデータを消して最初の状態に戻す</button></p>
     <p class="hint">単価は初期値として一般的な相場の目安を入れています。必ず自社の単価に書き換えてください。</p>
     <p><button id="exportBtn" class="btn ghost">データを書き出し（バックアップ）</button>

@@ -155,6 +155,7 @@
     hideLogin();
     $('#cloudBox').hidden = false;
     $('#cloudEmail').textContent = u.email || '';
+    loadLine();
     await pull({ initial: !meta.lastPull });
   }
 
@@ -176,7 +177,48 @@
     await sb.auth.signOut();
     user = null;
     $('#cloudBox').hidden = true;
+    $('#lineBox').hidden = true;
     showLogin();
+  });
+
+  // ---------- LINE 通知の設定（端末には保存せず、Supabase の kj_notify にだけ置く） ----------
+  let lineHasToken = false, lineSavedUid = '';
+  const lineMsg = (t, bad) => { const el = $('#lineMsg'); el.textContent = t; el.style.color = bad ? '#e03131' : ''; };
+  async function loadLine() {
+    // 読み込みが終わってから欄を出す（先に入力した内容を上書きしないため）
+    const { data, error } = await sb.from('kj_notify').select('line_token,line_user_id,enabled').maybeSingle();
+    $('#lineBox').hidden = false;
+    if (error) { lineMsg('LINEの設定を読み込めませんでした。', true); return; }
+    lineHasToken = !!(data && data.line_token);
+    $('#lineToken').value = '';
+    $('#lineToken').placeholder = lineHasToken ? '保存済み（変えるときだけ貼り付け）' : '貼り付けてください';
+    lineSavedUid = (data && data.line_user_id) || '';
+    $('#lineUserId').value = lineSavedUid;
+    $('#lineEnabled').checked = data ? data.enabled !== false : true;
+    lineMsg(lineHasToken && data.line_user_id ? '設定済みです。「テスト送信」で届くか確かめられます。' : '');
+  }
+  async function saveLine() {
+    const token = $('#lineToken').value.trim(), uidLine = $('#lineUserId').value.trim();
+    if (!token && !lineHasToken) { lineMsg('チャネルアクセストークンを貼り付けてください。', true); return false; }
+    if (!/^U[0-9a-f]{32}$/.test(uidLine)) { lineMsg('ユーザーIDは「U」から始まる33文字です。もう一度コピーしてください。', true); return false; }
+    const row = { user_id: user.id, line_user_id: uidLine, enabled: $('#lineEnabled').checked, updated_at: new Date().toISOString() };
+    if (token) row.line_token = token;
+    const { error } = await sb.from('kj_notify').upsert(row, { onConflict: 'user_id' });
+    if (error) { lineMsg('保存できませんでした：' + error.message, true); return false; }
+    lineHasToken = lineHasToken || !!token; lineSavedUid = uidLine;
+    $('#lineToken').value = ''; $('#lineToken').placeholder = '保存済み（変えるときだけ貼り付け）';
+    lineMsg('保存しました。');
+    return true;
+  }
+  $('#lineSave').addEventListener('click', () => { if (user) saveLine(); });
+  $('#lineTest').addEventListener('click', async () => {
+    if (!user) return;
+    if ($('#lineToken').value.trim() || $('#lineUserId').value.trim() !== lineSavedUid) { if (!(await saveLine())) return; }
+    lineMsg('送信中…');
+    const { data, error } = await sb.functions.invoke('daily-alerts', { body: { test: true } });
+    if (error) { lineMsg('送れませんでした：' + error.message, true); return; }
+    if (data && data.sent) lineMsg('LINEに送りました。届いているか確認してください。');
+    else lineMsg('送れませんでした：' + ((data && data.reason) || '原因不明') + '（トークンとユーザーID、公式アカウントを友だち追加しているかを確認してください）', true);
   });
 
   // ---------- きっかけ ----------
