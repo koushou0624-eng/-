@@ -33,21 +33,7 @@
     alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
-  // name: 現場での呼び方、legal: 法律上の産業廃棄物の種類（報告書の集計に使う）
-  const WASTE_TYPES = [
-    { id: 'wood', name: '木（シバ）', legal: '木くず', unit: 't' },
-    { id: 'concrete', name: 'コンクリートガラ（無筋）', legal: 'がれき類', unit: 't' },
-    { id: 'concreteR', name: 'コンクリートガラ（有筋）', legal: 'がれき類', unit: 't' },
-    { id: 'mixed', name: 'ミンチ', legal: '混合廃棄物', unit: 't' },
-    { id: 'plastic', name: '廃プラ', legal: '廃プラスチック類', unit: 't' },
-    { id: 'glass', name: '瓦', legal: 'ガラスくず・コンクリートくず及び陶磁器くず', unit: 't' },
-    { id: 'gypsum', name: '石膏ボード', legal: 'ガラスくず・コンクリートくず及び陶磁器くず（廃石膏ボード）', unit: 't' },
-    { id: 'asphalt', name: 'アスファルトガラ', legal: 'がれき類', unit: 't' },
-    { id: 'metal', name: '金属くず（売れない鉄くずなど）', legal: '金属くず', unit: 't' },
-    { id: 'asb', name: 'アスベスト（レベル3の成形板など）', legal: '石綿含有産業廃棄物', unit: '㎥' },
-    { id: 'asbsp', name: 'アスベスト（レベル1・2の吹付けなど）', legal: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
-  ];
-  const WT = Object.fromEntries(WASTE_TYPES.map((w) => [w.id, w]));
+  const { WASTE_TYPES, WT } = KJCore;
   const EXPENSE_CATS = ['消耗品', '高速代', '燃料費', 'その他'];
   // 延床1㎡あたりの廃棄物量の目安（トン）
   // c:コンクリート塊 w:木材 a:アスファルト m:混合廃棄物 fe:鉄スクラップ
@@ -386,36 +372,9 @@
   const todayIso = () => isoOf(new Date());
   const caseName = (c) => `${c.clientName || '（施主未入力）'}様邸`;
 
-  // 電子マニフェストの登録期限：引渡しから3日以内（土日を除いた目安）
-  function plus3BizDays(iso) {
-    const d = new Date(iso + 'T00:00:00'); let n = 0;
-    while (n < 3) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n++; }
-    return d;
-  }
-
-  // 返送・報告の期限と状態
-  function manifestChecks(m) {
-    if (!m.date) return [];
-    const sp = WT[m.type]?.sp, out = [];
-    const st = (label, doneIso, due) => {
-      if (doneIso) return { label, state: 'done', text: `${label} 済` };
-      const diff = Math.round((due - today()) / 86400000);
-      if (diff < 0) return { label, state: 'late', due, text: `${label} ${-diff}日超過`, report: addDays(isoOf(due), 30) };
-      return { label, state: diff <= 14 ? 'soon' : 'wait', due, text: `${label} あと${diff}日` };
-    };
-    if (m.kind === 'electronic') {
-      out.push(st('JWNET登録', m.reg, plus3BizDays(m.date)));
-      out.push(st('運搬終了報告', m.b2, addDays(m.date, sp ? 60 : 90)));
-      out.push(st('処分終了報告', m.d, addDays(m.date, sp ? 60 : 90)));
-      out.push(st('最終処分報告', m.e, addDays(m.date, 180)));
-    } else {
-      out.push(st('B2票', m.b2, addDays(m.date, sp ? 60 : 90)));
-      out.push(st('D票', m.d, addDays(m.date, sp ? 60 : 90)));
-      out.push(st('E票', m.e, addDays(m.date, 180)));
-    }
-    return out;
-  }
-
+  const plus3BizDays = KJCore.plus3BizDays;
+  // 返送・報告の期限と状態（計算は core.js）
+  const manifestChecks = (m) => KJCore.manifestChecks(m, today());
   const chipsHtml = (m) => {
     const ch = manifestChecks(m);
     if (!ch.length) return '<span class="chip">交付日を入れると期限を計算します</span>';
@@ -643,82 +602,11 @@
 
   // ---------- リース ----------
   const leasesOf = (c) => (Array.isArray(c.leases) ? c.leases : (c.leases = []));
-  const LEASE_MODES = {
-    calendar: 'リース会社の締め日ごと（登録のない会社は末日締め）',
-    anniv: '借りた日から1か月ごと',
-    days30: '借りた日から30日ごと',
-  };
-  const lastOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  // 借りた日から nか月後（月末を超える日は月末にそろえる）
-  function addMonthsClamp(d, n) {
-    const y = d.getFullYear(), m = d.getMonth() + n;
-    const last = new Date(y, m + 1, 0).getDate();
-    return new Date(y, m, Math.min(d.getDate(), last));
-  }
-  // リース会社の締め日（登録がなければ末日）
-  const companyOf = (name) => (state.settings.leaseCompanies || []).find((x) => x.name && x.name.trim() === String(name || '').trim());
-  const closeOf = (l) => { const co = companyOf(l.company); return co && co.close !== '' && co.close != null ? co.close : '末'; };
-  const closeLabel = (c) => (c === '末' || c === 'end' ? '末日' : `${c}日`);
-  // その月の締め日（31日締め → 30日の月は30日、末日締め → 月末）
-  const closeDate = (y, m, c) => { const last = new Date(y, m + 1, 0).getDate(); return new Date(y, m, c === '末' ? last : Math.min(num(c) || last, last)); };
-  // 月極の区切り（1区切り＝1回の請求）の終わりの日
-  function segEnd(segStart, l0, k, mode, close = '末') {
-    if (mode === 'calendar') {
-      const thisClose = closeDate(segStart.getFullYear(), segStart.getMonth(), close);
-      return segStart <= thisClose ? thisClose : closeDate(segStart.getFullYear(), segStart.getMonth() + 1, close);
-    }
-    if (mode === 'anniv') { const e = addMonthsClamp(l0, k + 1); e.setDate(e.getDate() - 1); return e; }
-    const e = new Date(l0); e.setDate(e.getDate() + (k + 1) * 30 - 1); return e;
-  }
-  const DAY = 86400000;
-  const dayCount = (a, b) => Math.round((b - a) / DAY) + 1;
-  const mLabel = (end, k, mode) => (mode === 'calendar' ? `${end.getMonth() + 1}月` : `${k + 1}か月目`);
-
-  // 区切りごとに「使った日数が決めた日数を超えたら月極、超えなければ日割り」で計算
-  function leaseCalc(l, endOverride) {
-    const daily = num(l.daily), monthly = num(l.monthly), th = Math.max(1, num(l.th) || 1);
-    const mode = LEASE_MODES[state.settings.leaseMode] ? state.settings.leaseMode : 'calendar';
-    const close = closeOf(l);
-    const extra = num(l.transport) + num(l.other);
-    if (!l.start) return { days: 0, cost: extra, rent: 0, parts: [], state: 'none' };
-    const s0 = new Date(l.start + 'T00:00:00'), e0 = new Date((endOverride || l.end || todayIso()) + 'T00:00:00');
-    const days = dayCount(s0, e0);
-    if (days <= 0) return { days: 0, cost: extra, rent: 0, parts: [], state: 'bad' };
-    const segs = [];
-    let cur = new Date(s0), k = 0;
-    while (cur <= e0 && k < 240) {
-      const natEnd = segEnd(cur, s0, k, mode, close);
-      const to = natEnd < e0 ? natEnd : e0;
-      const d = dayCount(cur, to);
-      const len = dayCount(cur, natEnd); // その区切りで借りられる最大の日数
-      segs.push({ from: new Date(cur), to, natEnd, d, len, monthly: d > th, label: mLabel(natEnd, k, mode), amount: d > th ? monthly : d * daily, ym: isoOf(natEnd).slice(0, 7) });
-      cur = new Date(natEnd); cur.setDate(cur.getDate() + 1); k++;
-    }
-    const rent = segs.reduce((a, g) => a + (g.monthly ? monthly : g.d * daily), 0);
-    const parts = segs.map((g) => (g.monthly ? `${g.label} ${g.d}日（${th}日超え → 月極）¥${yen(monthly)}` : `${g.label} 日割り ${g.d}日 × ¥${yen(daily)}`));
-    const last = segs[segs.length - 1];
-    const nMonthly = segs.filter((g) => g.monthly).length;
-    const res = { days, rent, cost: rent + extra, parts, segs, full: nMonthly, rem: last.d, th, ongoing: !l.end && !endOverride, state: 'ok', mode, close,
-      summary: nMonthly === segs.length ? '月極' : nMonthly ? `月極${nMonthly}・日割り${segs.length - nMonthly}` : '日割り' };
-    if (!last.monthly) {
-      if (last.len > th) {
-        // この区切りの中で月極に切り替わる
-        res.toSwitch = th - last.d + 1;
-        res.lastDaily = new Date(last.from); res.lastDaily.setDate(res.lastDaily.getDate() + th - 1); // 日割りで済む最後の日
-        if (res.ongoing && res.toSwitch <= 3) res.state = 'soon';
-        if (monthly > 0 && last.d * daily > monthly) {
-          res.tip = `今回の締め（${last.label}分）までの日割り（¥${yen(last.d * daily)}）は月極（¥${yen(monthly)}）より高くなっています。あと${res.toSwitch}日借りると月極に切り替わり、¥${yen(last.d * daily - monthly)}安くなります。`;
-        }
-      } else {
-        res.shortSeg = last; // 締め日までの日数が足りず、この請求は月極にならない
-      }
-    } else {
-      res.paidUntil = last.natEnd; // 月極で追加料金なしの最終日
-      if (res.ongoing) res.state = 'monthly';
-    }
-    if (res.ongoing && segs.length > 1 && last.d <= 3) res.newMonth = { prev: segs[segs.length - 2], cur: last };
-    return res;
-  }
+  // リースの計算は core.js（毎朝の通知と同じ計算）
+  const { LEASE_MODES, lastOfMonth, addMonthsClamp, closeLabel, closeDate, segEnd, dayCount, mLabel } = KJCore;
+  const companyOf = (name) => KJCore.companyOf(state.settings, name);
+  const closeOf = (l) => KJCore.closeOf(state.settings, l);
+  const leaseCalc = (l, endOverride) => KJCore.leaseCalc(l, state.settings, endOverride, today());
   // 月ごとの請求額（回送費・その他は借りた月に計上）
   function leaseByMonth(l) {
     const r = leaseCalc(l); const out = {};
