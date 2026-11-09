@@ -598,6 +598,15 @@
   $('#manifestReport').addEventListener('change', (e) => {
     if (e.target.id === 'reportFy') { reportFy = parseInt(e.target.value, 10); renderManifestReport(); }
   });
+  let resetArmed = null;
+  $('#resetAll').addEventListener('click', (ev) => {
+    const btn = ev.currentTarget;
+    if (!resetArmed) { btn.textContent = 'もう一度押すと全データを消します'; resetArmed = setTimeout(() => { btn.textContent = 'すべてのデータを消して最初の状態に戻す'; resetArmed = null; }, 4000); return; }
+    clearTimeout(resetArmed); resetArmed = null; btn.textContent = 'すべてのデータを消して最初の状態に戻す';
+    try { localStorage.removeItem(STORE_KEY); } catch (_) { /* noop */ }
+    state = load(); save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+    $('#tabs button[data-tab=input]').click();
+  });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });
   $('#newCase').addEventListener('click', () => {
     const c = newCase(); state.cases.unshift(c); state.currentId = c.id; save(); fillForm(caseForm, c); renderAll();
