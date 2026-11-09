@@ -605,8 +605,50 @@
       <p class="hint">提出は各自治体の様式（様式第三号）で行ってください。この表は転記用の集計です。</p>`;
   }
 
-  function renderManifest(c) { renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); }
-  function refreshManifestSummary(c) { renderManifestAlerts(); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
+  // ---------- 処分の状況（マニフェスト画面のいちばん上） ----------
+  let dispView = 'case'; // case＝この現場 / month＝今月の全現場
+  const tFmt = (q) => (Math.round(q * 100) / 100).toLocaleString('ja-JP');
+  function renderDispTop(c) {
+    const box = $('#dispTop'); if (!box) return;
+    const tabs = `<div class="seg"><button type="button" data-dview="case" class="${dispView === 'case' ? 'on' : ''}">この現場</button><button type="button" data-dview="month" class="${dispView === 'month' ? 'on' : ''}">今月の全現場</button></div>`;
+    if (dispView === 'month') {
+      const ym = todayIso().slice(0, 7);
+      const rows = state.cases.map((x) => {
+        const ms = manifestsOf(x).filter((m) => num(m.qty) > 0 && String(m.date || '').slice(0, 7) === ym);
+        const t = ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+        return { x, n: ms.length, t, cost: ms.reduce((a, m) => a + dispOf(m), 0) };
+      }).filter((r) => r.n).sort((a, b) => b.cost - a.cost);
+      const tt = rows.reduce((a, r) => a + r.t, 0), tc = rows.reduce((a, r) => a + r.cost, 0), tn = rows.reduce((a, r) => a + r.n, 0);
+      const max = Math.max(1, ...rows.map((r) => r.cost));
+      box.innerHTML = `<section class="disptop"><div class="dt-head"><h2>処分の状況</h2>${tabs}</div>
+        <div class="dt-kpis"><div><span>重さ</span><b>${tFmt(tt)}<small>t</small></b></div><div><span>処分代</span><b><small>¥</small>${yen(tc)}</b></div><div><span>枚数</span><b>${tn}<small>枚</small></b></div></div>
+        ${rows.length ? `<ul class="dt-rows">${rows.map((r) => `<li><div class="dt-line"><span class="dt-name">${esc(caseName(r.x))}</span><span class="dt-num">${tFmt(r.t)}t・<b>¥${yen(r.cost)}</b></span></div><div class="bar"><i style="width:${Math.round(r.cost / max * 100)}%"></i></div></li>`).join('')}</ul>`
+          : '<p class="empty">今月の処分の記録はまだありません。</p>'}
+        <p class="hint">${ym.replace('-', '年')}月に搬出した分（交付日の月）で数えています。</p></section>`;
+      return;
+    }
+    const d = dispSummary(c), list = manifestsOf(c).filter((m) => num(m.qty) > 0);
+    const tt = list.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+    const types = WASTE_TYPES.filter((w) => d.by[w.id]); // 捨てた種類だけ
+    // 見込みは「コンクリートガラ」が無筋・有筋の合計なので、見込みとの比較はまとめて行う
+    const est = (id) => (id === 'concreteR' ? 0 : estimateFor(c, id) || 0);
+    const act = (id) => (id === 'concrete' ? ((d.by.concrete || {}).qty || 0) + ((d.by.concreteR || {}).qty || 0) : ((d.by[id] || {}).qty || 0));
+    const rows = types.map((w) => {
+      const g = d.by[w.id] || { qty: 0, cost: 0, n: 0 };
+      const e = est(w.id), a = act(w.id);
+      const pct = e ? Math.min(100, Math.round(a / e * 100)) : (g.qty ? 100 : 0);
+      const over = e && a > e * 1.05;
+      return `<li><div class="dt-line"><span class="dt-name">${esc(w.name)}</span><span class="dt-num"><b>${tFmt(g.qty)}</b>${w.unit}・¥${yen(g.cost)}</span></div>
+        ${e ? `<div class="bar ${over ? 'over' : ''}"><i style="width:${pct}%"></i></div>` : ''}
+        <div class="dt-sub">${e ? `見込み ${tFmt(e)}t${w.id === 'concrete' ? '（無筋・有筋の合計）' : ''}に対して ${tFmt(a)}t${over ? '：<b class="neg">見込みより多い</b>' : ''}` : (g.n ? `${g.n}枚` : '')}</div></li>`;
+    }).join('');
+    box.innerHTML = `<section class="disptop"><div class="dt-head"><h2>処分の状況</h2>${tabs}</div>
+      <div class="dt-kpis"><div><span>重さ</span><b>${tFmt(tt)}<small>t</small></b></div><div><span>処分代</span><b><small>¥</small>${yen(d.total)}</b></div><div><span>枚数</span><b>${d.count}<small>枚</small></b></div></div>
+      ${rows ? `<ul class="dt-rows">${rows}</ul>` : '<p class="empty">まだ処分の記録がありません。下の「＋ 1枚追加」か、公式LINEから記録すると、ここに出ます。</p>'}</section>`;
+  }
+
+  function renderManifest(c) { renderDispTop(c); renderManifestAlerts(); renderManifestList(c); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); }
+  function refreshManifestSummary(c) { renderDispTop(c); renderManifestAlerts(); renderManifestCost(c); renderSiteInvoices(); renderManifestCompare(c); renderManifestReport(); renderSchedule(c); renderProfit(c, state.settings); renderExpense(c); }
 
   // ---------- リース ----------
   const leasesOf = (c) => (Array.isArray(c.leases) ? c.leases : (c.leases = []));
@@ -845,7 +887,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderQuick(); renderWasteLog(); if (curSec === 'home') renderHome(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -857,12 +899,147 @@
     const b = e.target.closest('button[data-tab]'); if (!b) return;
     $$('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
     $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
+    const sec = secOf(b.dataset.tab);
+    if (sec !== curSec) setSection(sec, false);
+    lastTab[sec] = b.dataset.tab;
+    try { localStorage.setItem('kaitai-jimu-nav', JSON.stringify({ sec, lastTab })); } catch (_) { /* noop */ }
+    if (b.dataset.tab === 'home') renderHome();
+    window.scrollTo(0, 0);
+  });
+
+  // ---------- 画面の入口：下の5つのボタン（ホーム・現場・処分・お金・設定） ----------
+  const SECTIONS = {
+    home: ['home'],
+    site: ['input', 'schedule', 'estimate', 'process', 'recycle', 'greeting', 'certificate'],
+    waste: ['manifest'],
+    money: ['profit', 'expense', 'lease'],
+    settings: ['settings'],
+  };
+  const TAB_LABELS = { input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム' };
+  const secOf = (tab) => Object.keys(SECTIONS).find((k) => SECTIONS[k].includes(tab)) || 'home';
+  let curSec = 'home';
+  const lastTab = {};
+  $$('#tabs button').forEach((b) => { if (TAB_LABELS[b.dataset.tab]) b.textContent = TAB_LABELS[b.dataset.tab]; });
+  function setSection(sec, openTab = true) {
+    curSec = sec;
+    $$('#mainNav button').forEach((b) => b.classList.toggle('active', b.dataset.sec === sec));
+    const tabs = SECTIONS[sec];
+    $$('#tabs button').forEach((b) => { b.hidden = !tabs.includes(b.dataset.tab); });
+    $('#tabs').classList.toggle('single', tabs.length < 2);
+    document.body.dataset.section = sec;
+    if (openTab) { const t = lastTab[sec] && tabs.includes(lastTab[sec]) ? lastTab[sec] : tabs[0]; $(`#tabs button[data-tab="${t}"]`).click(); }
+  }
+  $('#mainNav').addEventListener('click', (e) => { const b = e.target.closest('[data-sec]'); if (b) setSection(b.dataset.sec); });
+  const go = (tab) => { setSection(secOf(tab), false); $(`#tabs button[data-tab="${tab}"]`).click(); };
+
+  // 押したら返事：画面の下に短く出す
+  let toastTimer = null;
+  function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600); }
+
+  // ---------- ホーム：今日やること・現場の一覧・最近の処分 ----------
+  const WCOLOR = { wood: '#b07a3c', concrete: '#7a8794', concreteR: '#556270', mixed: '#c2410c', plastic: '#2f80ed', glass: '#8e6bbf', gypsum: '#9aa5b1', asphalt: '#3b3b3b', metal: '#4b7f52', asb: '#e03131', asbsp: '#e03131' };
+  const wchip = (type) => `<span class="wchip" style="--wc:${WCOLOR[type] || '#888'}">${esc((WT[type] || {}).name || type)}</span>`;
+  const md = (iso) => (iso ? iso.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2') : '');
+  function caseStatus(c) {
+    const t = todayIso();
+    if (c.endDate && c.endDate < t) return ['done', '完了'];
+    if (c.startDate && c.startDate > t) return ['plan', '着工前'];
+    if (c.startDate) return ['live', '工事中'];
+    return ['plan', '日程未定'];
+  }
+  function renderHome() {
+    const now = today();
+    const a = KJCore.collectAlerts(state, now);
+    const n = a.lease.length + a.manifest.length + a.schedule.length;
+    const wd = '日月火水木金土'[now.getDay()];
+    const sec = (title, list) => (list.length ? `<h3>${title}</h3><ul class="alist">${list.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+    const ym = todayIso().slice(0, 7);
+    const cases = state.cases.slice().sort((x, y) => { const o = { live: 0, plan: 1, done: 2 }; return o[caseStatus(x)[0]] - o[caseStatus(y)[0]]; });
+    const recent = state.cases.flatMap((c) => manifestsOf(c).filter((m) => num(m.qty) > 0).map((m) => ({ c, m })))
+      .sort((x, y) => String(y.m.lineAt || y.m.date).localeCompare(String(x.m.lineAt || x.m.date))).slice(0, 6);
+    $('#homeOut').innerHTML = `
+      <p class="today">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</p>
+      <section class="card ${n ? 'warn-card' : 'ok-card'}">
+        <h2 class="card-title">${n ? `今日の注意 <span class="count">${n}件</span>` : '✅ 今日の注意はありません'}</h2>
+        ${sec('リース', a.lease)}${sec('マニフェスト', a.manifest)}${sec('届出・挨拶', a.schedule)}
+      </section>
+      <div class="actions">
+        <button type="button" class="act" data-act="waste"><span class="ic">🚛</span>捨てた記録をつける</button>
+        <button type="button" class="act" data-act="newcase"><span class="ic">🏗</span>新しい現場を作る</button>
+        <button type="button" class="act" data-act="expense"><span class="ic">⛽</span>経費をつける</button>
+      </div>
+      <section class="card">
+        <h2 class="card-title">現場</h2>
+        <ul class="cases">${cases.map((c) => {
+          const [k, label] = caseStatus(c);
+          const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && String(m.date || '').slice(0, 7) === ym);
+          const t = ms.reduce((s2, m) => s2 + num(m.qty), 0), cost = ms.reduce((s2, m) => s2 + dispOf(m), 0);
+          return `<li><button type="button" class="case-card" data-open="${c.id}">
+            <span class="st ${k}">${label}</span>
+            <span class="cname">${esc(caseName(c))}</span>
+            <span class="caddr">${esc(c.siteAddress || '住所未入力')}${c.startDate ? `　${md(c.startDate)}〜${md(c.endDate)}` : ''}</span>
+            <span class="cdisp">今月の処分 <b>${(Math.round(t * 100) / 100)}t</b>・¥${yen(cost)}</span>
+          </button></li>`;
+        }).join('')}</ul>
+      </section>
+      <section class="card">
+        <h2 class="card-title">最近の処分</h2>
+        ${recent.length ? `<ul class="wlog">${recent.map(({ c, m }) => `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${m.qty}t</b><span class="w">${esc(caseName(c))}・${esc(m.disposer || '処分場未入力')}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}</li>`).join('')}</ul>` : '<p class="empty">まだありません。「捨てた記録をつける」か、公式LINEから送ってください。</p>'}
+      </section>`;
+  }
+  $('#homeOut').addEventListener('click', (e) => {
+    const open = e.target.closest('[data-open]');
+    if (open) { state.currentId = open.dataset.open; save(); fillForm(caseForm, cur()); renderAll(); go('manifest'); return; }
+    const act = e.target.closest('[data-act]'); if (!act) return;
+    if (act.dataset.act === 'waste') { go('manifest'); setTimeout(() => $('#qwQty').focus(), 50); }
+    if (act.dataset.act === 'newcase') { $('#newCase').click(); go('input'); }
+    if (act.dataset.act === 'expense') { go('expense'); setTimeout(() => $('#expAmount').focus(), 50); }
+  });
+
+  // ---------- 処分：1行で記録 ----------
+  function renderQuick() {
+    const c = cur();
+    $('#quickCase').textContent = caseName(c);
+    const sel = $('#qwType');
+    if (!sel.options.length) sel.innerHTML = WASTE_TYPES.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('');
+    if (!$('#qwDate').value) $('#qwDate').value = todayIso();
+  }
+  $('#quickWaste').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const qty = num($('#qwQty').value);
+    if (!(qty > 0)) { $('#qwQty').focus(); toast('重さを入れてください'); return; }
+    const c = cur();
+    const site = $('#qwSite').value.trim() || state.settings.defDisposer || '';
+    manifestsOf(c).push(newManifest(c, { type: $('#qwType').value, qty: String(qty), disposer: site, date: $('#qwDate').value || todayIso() }));
+    $('#qwQty').value = '';
+    save(); renderAll();
+    toast(`記録しました：${(WT[$('#qwType').value] || {}).name} ${qty}t`);
+  });
+  // 捨てた記録の一覧（この現場・新しい順）
+  function renderWasteLog() {
+    const c = cur();
+    const list = manifestsOf(c).filter((m) => num(m.qty) > 0 || m.date).slice()
+      .sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.lineAt || '').localeCompare(String(x.lineAt || '')));
+    $('#wasteLog').innerHTML = list.length ? list.map((m) => {
+      const late = manifestChecks(m).some((x) => x.state === 'late');
+      return `<li><span class="d">${md(m.date)}</span>${wchip(m.type)}<b class="q">${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</b><span class="w">${esc(m.disposer || '処分場未入力')}</span><span class="y">¥${yen(dispOf(m))}</span>${m.via === 'line' ? '<span class="chip line">LINE</span>' : ''}${late ? '<span class="chip late">返送期限切れ</span>' : ''}<button type="button" class="link" data-edit="${m.id}">詳しく</button></li>`;
+    }).join('') : '<li class="empty">まだ記録がありません。上の「記録する」か、公式LINEから記録できます。</li>';
+  }
+  $('#wasteLog').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-edit]'); if (!b) return;
+    $('#manifestDetail').open = true;
+    const card = document.querySelector(`.mcard[data-mid="${b.dataset.edit}"]`);
+    if (card) { card.scrollIntoView({ block: 'center' }); card.classList.add('flash'); setTimeout(() => card.classList.remove('flash'), 1600); }
   });
   document.addEventListener('click', (e) => { if (e.target.closest('.print')) window.print(); });
 
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-set-end]'); if (!b) return;
     cur().endDate = b.dataset.setEnd; save(); fillForm(caseForm, cur()); renderAll();
+  });
+  $('#dispTop').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dview]'); if (!b) return;
+    dispView = b.dataset.dview; renderDispTop(cur());
   });
   // マニフェストの入力（入力中のカードは描き直さず、期限表示と集計だけ更新）
   $('#manifestList').addEventListener('input', (e) => {
@@ -1122,6 +1299,13 @@
   });
 
   fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+
+  (function startNav() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('kaitai-jimu-nav')); } catch (_) { /* noop */ }
+    if (saved && saved.lastTab) Object.assign(lastTab, saved.lastTab);
+    setSection(saved && SECTIONS[saved.sec] ? saved.sec : 'home');
+  })();
 
   // クラウド同期（cloud.js）から使う窓口
   window.KJApp = {

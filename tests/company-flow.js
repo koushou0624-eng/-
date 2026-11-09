@@ -28,6 +28,9 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
     await p.click('#loginSubmit');
   };
   const st = (p) => p.evaluate(() => KJApp.getState());
+  // 新しい画面：下の5つのボタンから開く
+  const toInput = async (p) => { await p.click('#mainNav [data-sec=site]'); await p.click('#tabs [data-tab=input]'); };
+  const toSettings = (p) => p.click('#mainNav [data-sec=settings]');
 
   // 1) 代表が登録 → 会社を作る
   const O = await open('O');
@@ -38,8 +41,8 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
   console.log('O: 会社の設定画面が出た');
   await O.fill('#companyName', 'テスト解体株式会社'); await O.click('#companyCreate button');
   await O.waitForSelector('#companyOverlay[hidden]', { state: 'attached', timeout: 15000 });
-  await O.fill('#caseForm [name=clientName]', '共有テスト 太郎'); await O.waitForTimeout(2500);
-  await O.click('[data-tab=settings]');
+  await toInput(O); await O.fill('#caseForm [name=clientName]', '共有テスト 太郎'); await O.waitForTimeout(2500);
+  await toSettings(O);
   await O.waitForFunction(() => document.querySelectorAll('#memberList li').length === 1);
   console.log('O: 会社名', await O.inputValue('#companyNameEdit'), '/ メンバー', (await O.textContent('#memberList')).replace(/\s+/g, ' '));
   await O.click('#inviteMake'); await O.waitForSelector('#inviteUrlRow:not([hidden])');
@@ -52,12 +55,11 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
   await signup(S, users[1]);
   await S.waitForFunction(() => KJApp.getState().cases.some((c) => c.clientName === '共有テスト 太郎'), null, { timeout: 15000 });
   console.log('S: 代表の案件が見えた');
-  await S.fill('#caseForm [name=clientName]', '共有テスト 次郎'); await S.waitForTimeout(2500);
+  await toInput(S); await S.fill('#caseForm [name=clientName]', '共有テスト 次郎'); await S.waitForTimeout(2500);
   await O.evaluate(() => KJCloud.pull());
   await O.waitForFunction(() => KJApp.getState().cases.some((c) => c.clientName === '共有テスト 次郎'), null, { timeout: 15000 });
   console.log('O: 社員の変更が届いた');
-  await O.evaluate(async () => { const p = document.querySelector('[data-tab=settings]'); p.click(); });
-  await O.reload(); await O.waitForFunction(() => document.querySelectorAll('#memberList li').length === 2, null, { timeout: 15000 });
+    await O.reload(); await O.waitForFunction(() => document.querySelectorAll('#memberList li').length === 2, null, { timeout: 15000 });
   console.log('O: メンバー一覧', (await O.textContent('#memberList')).replace(/\s+/g, ' '));
 
   // 3) 別の人は招待なしで登録 → 自分の会社を作る → 代表の会社のデータは見えない
@@ -78,11 +80,11 @@ fs.writeFileSync(path.join(__dirname, '.last-test-users.json'), JSON.stringify(u
   });
   console.log('X: 直接読める範囲', JSON.stringify(xRaw));
   // 招待を作れるのは代表だけ（社員は招待欄が出ない）
-  await S.click('[data-tab=settings]');
+  await toSettings(S);
   console.log('S: 招待ボタンが見える?', await S.isVisible('#inviteMake'), '/ 会社名を変えられる?', !(await S.isDisabled('#companyNameEdit')));
 
   // 4) 代表が社員を外す → 社員は会社のデータを読めなくなる
-  await O.click('[data-tab=settings]');
+  await toSettings(O);
   const btn = O.locator('#memberList [data-remove]'); await btn.click(); await btn.click();
   await O.waitForFunction(() => document.querySelectorAll('#memberList li').length === 1, null, { timeout: 15000 });
   console.log('O: 外した →', await O.textContent('#companyMsg'));
