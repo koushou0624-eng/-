@@ -187,7 +187,14 @@
       </fieldset>
       <fieldset>
         <legend>リースの機械（よく借りるもの）</legend>
-        <p class="hint">ここに登録した機械は、リースタブで選ぶだけで単価が入ります。「切替日数」を超えて借りると月極料金になります。</p>
+        <p class="hint">ここに登録した機械は、リースタブで選ぶだけで単価が入ります。その月（区切り）に使った日数が「超えたら月極」の日数を超えると、その月は月極料金になります。</p>
+        <label>月極の区切り方
+          <select name="leaseMode">
+            <option value="calendar">暦の月ごと（毎月1日〜末日）</option>
+            <option value="anniv">借りた日から1か月ごと</option>
+            <option value="days30">借りた日から30日ごと</option>
+          </select>
+        </label>
         <div id="leasePresets"></div>
         <button type="button" class="btn ghost small" id="addPreset">＋ 機械を追加</button>
       </fieldset>

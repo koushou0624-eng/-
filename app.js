@@ -28,6 +28,7 @@
       { name: '2tダンプ', daily: 8000, monthly: 120000, th: 18, transport: 0 },
     ],
     sites: [], // 処分場ごとの単価 { id, name, prices: { 種類: 円 } }
+    leaseMode: 'calendar', // 月極の区切り：calendar=暦の月 / anniv=借りた日から1か月 / days30=30日ごと
     alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
@@ -596,36 +597,68 @@
 
   // ---------- リース ----------
   const leasesOf = (c) => (Array.isArray(c.leases) ? c.leases : (c.leases = []));
-  const LEASE_BLOCK = 30; // 30日ごとに1か月として数える
+  const LEASE_MODES = {
+    calendar: '暦の月ごと（毎月1日〜末日）',
+    anniv: '借りた日から1か月ごと',
+    days30: '借りた日から30日ごと',
+  };
+  const lastOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  // 借りた日から nか月後（月末を超える日は月末にそろえる）
+  function addMonthsClamp(d, n) {
+    const y = d.getFullYear(), m = d.getMonth() + n;
+    const last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(d.getDate(), last));
+  }
+  // 月極の区切り（1区切り＝1か月）の終わりの日
+  function segEnd(segStart, l0, k, mode) {
+    if (mode === 'calendar') return lastOfMonth(segStart);
+    if (mode === 'anniv') { const e = addMonthsClamp(l0, k + 1); e.setDate(e.getDate() - 1); return e; }
+    const e = new Date(l0); e.setDate(e.getDate() + (k + 1) * 30 - 1); return e;
+  }
+  const DAY = 86400000;
+  const dayCount = (a, b) => Math.round((b - a) / DAY) + 1;
+  const mLabel = (d, k, mode) => (mode === 'calendar' ? `${d.getMonth() + 1}月` : `${k + 1}か月目`);
 
-  // 日割り → 決めた日数を超えたら月極。30日を超える分は次の1か月として同じルールで計算
+  // 区切りごとに「使った日数が決めた日数を超えたら月極、超えなければ日割り」で計算
   function leaseCalc(l) {
     const daily = num(l.daily), monthly = num(l.monthly), th = Math.max(1, num(l.th) || 1);
+    const mode = LEASE_MODES[state.settings.leaseMode] ? state.settings.leaseMode : 'calendar';
     const extra = num(l.transport) + num(l.other);
     if (!l.start) return { days: 0, cost: extra, rent: 0, parts: [], state: 'none' };
-    const endIso = l.end || todayIso();
-    const days = Math.round((new Date(endIso + 'T00:00:00') - new Date(l.start + 'T00:00:00')) / 86400000) + 1;
+    const s0 = new Date(l.start + 'T00:00:00'), e0 = new Date((l.end || todayIso()) + 'T00:00:00');
+    const days = dayCount(s0, e0);
     if (days <= 0) return { days: 0, cost: extra, rent: 0, parts: [], state: 'bad' };
-    const full = Math.floor(days / LEASE_BLOCK), rem = days - full * LEASE_BLOCK;
-    const remMonthly = rem > th;
-    const rent = full * monthly + (rem === 0 ? 0 : remMonthly ? monthly : rem * daily);
-    const parts = [];
-    if (full) parts.push(`月極 ${full}か月 × ¥${yen(monthly)}`);
-    if (rem) parts.push(remMonthly ? `${rem}日（${th}日超え → 月極）¥${yen(monthly)}` : `日割り ${rem}日 × ¥${yen(daily)}`);
-    const blockStart = addDays(l.start, full * LEASE_BLOCK);
-    const res = { days, rent, cost: rent + extra, parts, full, rem, th, ongoing: !l.end, state: 'ok' };
-    if (rem && !remMonthly) {
-      res.toSwitch = th - rem + 1; // あと何日で月極になるか
-      res.lastDaily = addDays(isoOf(blockStart), th - 1); // 日割りで済む最後の日
-      if (res.ongoing && res.toSwitch <= 3) res.state = 'soon';
+    const segs = [];
+    let cur = new Date(s0), k = 0;
+    while (cur <= e0 && k < 240) {
+      const natEnd = segEnd(cur, s0, k, mode);
+      const to = natEnd < e0 ? natEnd : e0;
+      const d = dayCount(cur, to);
+      const len = dayCount(cur, natEnd); // その区切りで借りられる最大の日数
+      segs.push({ from: new Date(cur), to, natEnd, d, len, monthly: d > th, label: mLabel(cur, k, mode) });
+      cur = new Date(natEnd); cur.setDate(cur.getDate() + 1); k++;
     }
-    if (rem && remMonthly) {
-      res.paidUntil = addDays(isoOf(blockStart), LEASE_BLOCK - 1); // 月極で追加料金なしの最終日
+    const rent = segs.reduce((a, g) => a + (g.monthly ? monthly : g.d * daily), 0);
+    const parts = segs.map((g) => (g.monthly ? `${g.label} ${g.d}日（${th}日超え → 月極）¥${yen(monthly)}` : `${g.label} 日割り ${g.d}日 × ¥${yen(daily)}`));
+    const last = segs[segs.length - 1];
+    const nMonthly = segs.filter((g) => g.monthly).length;
+    const res = { days, rent, cost: rent + extra, parts, full: nMonthly, rem: last.d, th, ongoing: !l.end, state: 'ok', mode,
+      summary: nMonthly === segs.length ? '月極' : nMonthly ? `月極${nMonthly}・日割り${segs.length - nMonthly}` : '日割り' };
+    if (!last.monthly) {
+      if (last.len > th) {
+        // この区切りの中で月極に切り替わる
+        res.toSwitch = th - last.d + 1;
+        res.lastDaily = new Date(last.from); res.lastDaily.setDate(res.lastDaily.getDate() + th - 1); // 日割りで済む最後の日
+        if (res.ongoing && res.toSwitch <= 3) res.state = 'soon';
+        if (monthly > 0 && last.d * daily > monthly) {
+          res.tip = `今${mode === 'calendar' ? '月' : 'の区切り'}の日割り（¥${yen(last.d * daily)}）は月極（¥${yen(monthly)}）より高くなっています。あと${res.toSwitch}日借りると月極に切り替わり、¥${yen(last.d * daily - monthly)}安くなります。`;
+        }
+      } else {
+        res.shortSeg = last; // 月末までの日数が足りず、この区切りは月極にならない
+      }
+    } else {
+      res.paidUntil = last.natEnd; // 月極で追加料金なしの最終日
       if (res.ongoing) res.state = 'monthly';
-    }
-    // 日割りが月極を超えている（あと少し借りれば月極になって安くなる）
-    if (rem && !remMonthly && monthly > 0 && rem * daily > monthly) {
-      res.tip = `今の日割り（¥${yen(rem * daily)}）は月極（¥${yen(monthly)}）より高くなっています。あと${res.toSwitch}日借りると月極に切り替わり、¥${yen(rem * daily - monthly)}安くなります。`;
     }
     return res;
   }
@@ -637,10 +670,11 @@
     const r = leaseCalc(l);
     if (!l.start) return '<span class="chip">借りた日を入れると金額を計算します</span>';
     if (r.state === 'bad') return '<span class="chip late">返した日が借りた日より前です</span>';
-    const pct = Math.min(100, Math.round((r.rem || (r.full ? LEASE_BLOCK : 0)) / Math.max(1, num(l.th)) * 100));
+    const pct = Math.min(100, Math.round(r.rem / Math.max(1, num(l.th)) * 100));
     let note = '';
     if (r.toSwitch != null) note = `<span class="chip ${r.state === 'soon' ? 'soon' : 'wait'}">月極まで あと${r.toSwitch}日</span> <span class="sub">${!r.ongoing ? '日割りで計算' : r.tip ? `${fmtDate(addDays(isoOf(r.lastDaily), 1))}から月極` : `${fmtDate(r.lastDaily)}までに返せば日割りで済みます`}</span>`;
     else if (r.paidUntil) note = `<span class="chip done">月極に切替済み</span> <span class="sub">${r.ongoing ? `${fmtDate(r.paidUntil)}までは追加料金なし` : '月極で計算'}</span>`;
+    else if (r.shortSeg) note = `<span class="chip">日割り</span> <span class="sub">${fmtDate(r.shortSeg.natEnd)}までは${r.shortSeg.len}日しかないため、この区切りは月極になりません</span>`;
     return `
       <div class="lsum"><span>使用 <b>${r.days}日</b>${r.ongoing ? '（借りている途中・今日まで）' : ''}</span><span>リース代 <b>¥${yen(r.cost)}</b></span></div>
       <div class="lbar"><div style="width:${r.rem && r.rem <= num(l.th) ? pct : 100}%" class="${r.paidUntil ? 'm' : ''}"></div></div>
@@ -671,13 +705,13 @@
   }
   function renderLeaseTotal(c) {
     const ls = leasesOf(c);
-    const rows = ls.map((l) => { const r = leaseCalc(l); return `<tr><td>${esc(l.name)}</td><td class="num">${r.days}日</td><td>${r.paidUntil || r.full ? '月極' : r.days ? '日割り' : '—'}</td><td class="num">¥${yen(r.cost)}</td></tr>`; }).join('');
+    const rows = ls.map((l) => { const r = leaseCalc(l); return `<tr><td>${esc(l.name)}</td><td class="num">${r.days}日</td><td>${r.days ? r.summary : '—'}</td><td class="num">¥${yen(r.cost)}</td></tr>`; }).join('');
     const total = leaseSummary(c).total;
     $('#leaseTotal').innerHTML = ls.length ? `
       <h2>リース代の合計</h2>
       <div class="table-wrap"><table class="cost wide"><thead><tr><th>機械</th><th class="num">使用日数</th><th>計算</th><th class="num">リース代（回送費込み）</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td></tr></tfoot></table></div>
-      <p class="hint">30日ごとに1か月として数えています。リース会社の締め方（暦の月単位など）と違う場合は、日数や金額を調整してください。</p>` : '';
+      <p class="hint">月極の区切り：${LEASE_MODES[state.settings.leaseMode] || LEASE_MODES.calendar}（「⚙ 会社・単価設定」で変更できます）。区切りごとに、使った日数が決めた日数を超えたら月極、超えなければ日割りで計算します。</p>` : '';
   }
   // 全案件の注意（月極が近い・月極になった）
   function renderLeaseAlerts() {
