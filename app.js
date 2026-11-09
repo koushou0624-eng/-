@@ -9,16 +9,23 @@
   // 相場の目安（必ず自社単価に変更する前提）
   const DEFAULT_SETTINGS = {
     name: '', rep: '', address: '', tel: '', permit: '', validDays: 30,
-    pWood: 35000, pSteel: 45000, pRc: 60000, pManual: 30, pNarrow: 10,
+    pWood: 40000, pSteel: 50000, pRc: 65000, pManual: 30, pNarrow: 10,
     pDebris: 12000, pBlock: 8000, pConcrete: 3000, pTree: 15000,
     pAsb3: 3000, pAsb12: 30000, pScaffold: 800, pOverhead: 5,
+    // 原価（利益チェック用）
+    cLabor: 18000, cWorkers: 3, cMove: 35000, cMachine: 10000, cTruckLoad: 4, cTruck: 15000,
+    cDispConcrete: 3000, cDispWood: 12000, cDispMixed: 25000, cDispDebris: 8000,
+    cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
   };
   // 延床1㎡あたりの廃棄物量の目安（トン）
+  // c:コンクリート塊 w:木材 a:アスファルト m:混合廃棄物 fe:鉄スクラップ
   const WASTE_FACTOR = {
-    wood: { c: 0.35, w: 0.12, a: 0.05 },
-    steel: { c: 0.6, w: 0.03, a: 0.05 },
-    rc: { c: 1.2, w: 0.02, a: 0.05 },
+    wood: { c: 0.25, w: 0.1, a: 0.02, m: 0.04, fe: 0.005 },
+    steel: { c: 0.5, w: 0.03, a: 0.02, m: 0.04, fe: 0.08 },
+    rc: { c: 1.0, w: 0.02, a: 0.02, m: 0.03, fe: 0.06 },
   };
+  // 1日に解体できる坪数の目安（重機あり）
+  const TSUBO_PER_DAY = { wood: 8, steel: 5, rc: 3 };
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -52,7 +59,7 @@
       structure: 'wood', floors: 2, floorArea: '', use: '専用住宅', builtYear: '',
       noHeavy: false, narrowRoad: false, debrisM3: 0, blockM: 0, concreteM2: 0, trees: 0,
       asbestos: 'none', asbestosM2: 0, startDate: '', endDate: '',
-      wConcrete: 0, wWood: 0, wAsphalt: 0, notes: '',
+      wConcrete: 0, wWood: 0, wAsphalt: 0, wMixed: 0, workDays: '', notes: '',
     };
   }
 
@@ -101,6 +108,71 @@
     return { lines, net, tax, total: net + tax, tsubo };
   }
 
+  // 廃棄物量：入力があればそれを、なければ構造別の目安を使う
+  function wasteOf(c) {
+    const f = WASTE_FACTOR[c.structure], a = num(c.floorArea);
+    const est = {
+      concrete: a * f.c + num(c.concreteM2) * 0.15 + num(c.blockM) * 0.2,
+      wood: a * f.w + num(c.trees) * 0.1, asphalt: a * f.a, mixed: a * f.m,
+    };
+    const entered = num(c.wConcrete) + num(c.wWood) + num(c.wAsphalt) + num(c.wMixed) > 0;
+    const w = entered ? { concrete: num(c.wConcrete), wood: num(c.wWood), asphalt: num(c.wAsphalt), mixed: num(c.wMixed) } : est;
+    return { ...w, iron: a * f.fe, estimated: !entered };
+  }
+
+  // 作業日数（休工日を除く実働日）と工程の内訳
+  function planOf(c) {
+    const tsubo = num(c.floorArea) * 0.3025;
+    let rate = TSUBO_PER_DAY[c.structure]; if (c.noHeavy) rate /= 2;
+    const body = Math.max(1, Math.ceil(tsubo / rate));
+    const phases = [
+      { name: '足場・養生シート設置', days: 1 },
+      { name: '残置物・内装材の撤去（手作業で分別）', days: Math.max(1, Math.ceil(num(c.debrisM3) / 10) + (num(c.floorArea) > 150 ? 1 : 0)) },
+    ];
+    if (c.asbestos === 'level3' || c.asbestos === 'level12') {
+      phases.push({ name: `アスベスト含有建材の除去（${c.asbestos === 'level3' ? 'レベル3' : 'レベル1・2'}）`, days: Math.max(1, Math.ceil(num(c.asbestosM2) / (c.asbestos === 'level3' ? 60 : 15))) });
+    }
+    phases.push({ name: `上屋解体（${c.noHeavy ? '手壊し中心' : '重機'}）`, days: Math.max(1, Math.ceil(body * 0.7)) });
+    phases.push({ name: '基礎・土間コンクリート撤去', days: Math.max(1, Math.ceil(body * 0.3 + num(c.concreteM2) / 60)) });
+    if (num(c.blockM) > 0 || num(c.trees) > 0) phases.push({ name: '外構（ブロック塀・庭木）撤去', days: Math.max(1, Math.ceil(num(c.blockM) / 25 + num(c.trees) / 6)) });
+    phases.push({ name: '整地・清掃・最終確認', days: 1 });
+    let total = phases.reduce((a, p) => a + p.days, 0);
+    const manual = num(c.workDays);
+    if (manual > 0 && manual !== total) {
+      // 手入力の日数に合わせて上屋解体の日数で調整
+      const idx = phases.findIndex((p) => p.name.startsWith('上屋解体'));
+      phases[idx].days = Math.max(1, phases[idx].days + (manual - total));
+      total = phases.reduce((a, p) => a + p.days, 0);
+    }
+    return { phases, days: total, auto: !(manual > 0) };
+  }
+
+  function calcCost(c, s) {
+    const e = calcEstimate(c, s), w = wasteOf(c), plan = planOf(c), d = plan.days;
+    const workers = num(s.cWorkers) + (c.noHeavy ? 2 : 0);
+    const tons = w.concrete + w.wood + w.asphalt + w.mixed;
+    const trucks = Math.ceil(tons / Math.max(0.5, num(s.cTruckLoad))) + Math.ceil(num(c.debrisM3) / Math.max(1, num(s.cTruckLoad) * 2));
+    const asbLine = e.lines.find((l) => l.name.startsWith('アスベスト'));
+    const rows = [
+      { name: '作業員（人工）', detail: `${workers}人 × ${d}日 × ${yen(s.cLabor)}円`, amount: workers * d * num(s.cLabor) },
+      { name: '重機（回送・損料・燃料）', detail: c.noHeavy ? '重機なし（手壊し）' : `回送 往復 ${yen(num(s.cMove) * 2)}円 ＋ ${d}日 × ${yen(s.cMachine)}円`, amount: c.noHeavy ? 0 : num(s.cMove) * 2 + d * num(s.cMachine) },
+      { name: 'ダンプ運搬', detail: `${trucks}台 × ${yen(s.cTruck)}円（${num(s.cTruckLoad)}t積み）`, amount: trucks * num(s.cTruck) },
+      { name: '処分費 コンクリート塊・アスファルト', detail: `${(w.concrete + w.asphalt).toFixed(1)}t × ${yen(s.cDispConcrete)}円`, amount: (w.concrete + w.asphalt) * num(s.cDispConcrete) },
+      { name: '処分費 木くず', detail: `${w.wood.toFixed(1)}t × ${yen(s.cDispWood)}円`, amount: w.wood * num(s.cDispWood) },
+      { name: '処分費 混合廃棄物', detail: `${w.mixed.toFixed(1)}t × ${yen(s.cDispMixed)}円`, amount: w.mixed * num(s.cDispMixed) },
+      { name: '処分費 残置物', detail: `${num(c.debrisM3)}㎥ × ${yen(s.cDispDebris)}円`, amount: num(c.debrisM3) * num(s.cDispDebris) },
+      { name: 'アスベスト除去（外注）', detail: asbLine ? `見積額の${num(s.cOutsource)}%` : 'なし', amount: asbLine ? asbLine.amount * num(s.cOutsource) / 100 : 0 },
+      { name: 'ガードマン（交通誘導）', detail: c.narrowRoad ? `1人 × ${d}日 × ${yen(s.cGuard)}円` : '不要（狭小道路でない）', amount: c.narrowRoad ? d * num(s.cGuard) : 0 },
+      { name: '養生シート・資材', detail: `延床 ${num(c.floorArea)}㎡ × 300円`, amount: num(c.floorArea) * 300 },
+      { name: '鉄スクラップ売却（差し引き）', detail: `約${w.iron.toFixed(2)}t × ${yen(s.cScrap)}円`, amount: -w.iron * num(s.cScrap) },
+    ];
+    const cost = Math.round(rows.reduce((a, r) => a + r.amount, 0));
+    const sales = e.net, profit = sales - cost, margin = sales > 0 ? profit / sales * 100 : 0;
+    const target = Math.min(90, num(s.targetMargin));
+    const minPrice = Math.ceil(cost / (1 - target / 100) / 1000) * 1000;
+    return { rows, cost, sales, profit, margin, target, minPrice, plan, w, trucks, e };
+  }
+
   const addDays = (iso, n) => { if (!iso) return null; const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d; };
   const addMonths = (iso, n) => { if (!iso) return null; const d = new Date(iso + 'T00:00:00'); d.setMonth(d.getMonth() + n); return d; };
   const fmtDate = (d) => (d ? `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日` : '');
@@ -137,6 +209,11 @@
       '解体部分の床面積80㎡以上は、元請業者が工事開始前に「石綿事前調査結果報告システム」で労働基準監督署・自治体へ報告。調査は有資格者が実施。');
     if (c.asbestos === 'unknown') item(true, 'アスベスト事前調査の実施', addDays(c.startDate, -14), '調査結果が「未調査」です。面積にかかわらず事前調査は必須です。');
     if (c.asbestos === 'level12') item(true, '特定粉じん排出等作業 実施届出', addDays(c.startDate, -14), 'レベル1・2の除去は、作業開始14日前までに都道府県等へ届出が必要。');
+    const by = parseInt(String(c.builtYear).replace(/[^0-9]/g, ''), 10);
+    if (by) {
+      if (by <= 2006) items.unshift(`<div class="deadline need"><div class="when">アスベスト判定｜${by}年築：含有の可能性あり</div><div class="sub">2006年9月以前に着工した建物は、石綿含有建材が使われている可能性があります。有資格者による書面調査・目視調査、必要に応じて分析調査を行ってください。${by === 2006 ? '（2006年築は着工日が9月1日より前か後かを確認）' : ''}</div></div>`);
+      else items.unshift(`<div class="deadline ok"><div class="when">アスベスト判定｜${by}年築：含有の可能性は低い</div><div class="sub">着工日が2006年9月1日以降であることを設計図書等で確認できれば、書面調査で「含有なし」と判断できます。事前調査と結果報告（80㎡以上）自体は必要です。</div></div>`);
+    }
     item(true, '近隣挨拶', addDays(c.startDate, -7), '着工1週間〜10日前が目安。→「⑤ 近隣挨拶文」タブ');
     item(!!c.narrowRoad, '道路使用許可（所轄警察署）', addDays(c.startDate, -7), '道路上に車両を止めて作業する場合に必要。処理に数日かかるため早めに申請。');
     item(true, '建物取毀証明書の発行 → 施主の滅失登記', addMonths(c.endDate, 1), '解体完了後、施主が1か月以内に法務局へ建物滅失登記。→「⑥ 取毀証明書」タブ');
@@ -175,6 +252,65 @@
         ・アスベスト事前調査結果：${ASB[c.asbestos]}${c.asbestos === 'unknown' ? '（調査後に金額が変わる場合があります）' : ''}<br>
         ・地中埋設物（浄化槽・ガラ等）が発見された場合は別途お見積りとなります。<br>
         ${c.notes ? '・' + esc(c.notes).replace(/\n/g, '<br>・') : ''}</p>`;
+  }
+
+  function renderProfit(c, s) {
+    const r = calcCost(c, s);
+    const cls = r.margin >= r.target ? 'good' : r.margin >= r.target - 10 ? 'mid' : 'bad';
+    const verdict = r.profit < 0 ? '✕ 赤字' : { good: '◎ 目標以上の利益', mid: '△ 利益が薄い', bad: '✕ 利益が少なすぎる' }[cls];
+    const discount = r.sales - r.minPrice;
+    const rows = r.rows.map((x) => `<tr><td>${esc(x.name)}<div class="sub">${esc(x.detail)}</div></td><td class="num ${x.amount < 0 ? 'minus' : ''}">${x.amount < 0 ? '−' : ''}${yen(Math.abs(x.amount))}</td></tr>`).join('');
+    $('#profitOut').innerHTML = num(c.floorArea) <= 0 ? '<p class="hint">「① 案件入力」で延床面積を入れると、この現場の利益を計算します。</p>' : `
+      <h2>この現場、いくら儲かる？</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="k">見積金額（税抜）</div><div class="v">¥${yen(r.sales)}</div></div>
+        <div class="kpi"><div class="k">原価の見込み</div><div class="v">¥${yen(r.cost)}</div></div>
+        <div class="kpi ${cls}"><div class="k">粗利（利益）</div><div class="v">¥${yen(r.profit)}</div><div class="k">粗利率 ${r.margin.toFixed(1)}%　<b>${verdict}</b></div></div>
+      </div>
+      <div class="callout ${discount >= 0 ? '' : 'bad'}">
+        ${discount >= 0
+          ? `<b>値引きできるのは ¥${yen(discount)} まで</b>（税抜 ¥${yen(r.minPrice)} を下回ると、目標の粗利率${r.target}%を割ります）`
+          : `<b>今の見積だと目標の粗利率${r.target}%に届きません。</b>税抜 ¥${yen(r.minPrice)} 以上にするか、原価を見直してください。`}
+        <br><span class="sub">赤字ライン（これ以下は赤字）：税抜 ¥${yen(r.cost)}</span>
+      </div>
+      <div class="facts">
+        <span>作業日数 <b>${r.plan.days}日</b>${r.plan.auto ? '（自動）' : ''}</span>
+        <span>ダンプ <b>${r.trucks}台</b></span>
+        <span>廃棄物 <b>${(r.w.concrete + r.w.wood + r.w.asphalt + r.w.mixed).toFixed(1)}t</b>${r.w.estimated ? '（目安）' : ''}</span>
+        <span>鉄スクラップ <b>約${r.w.iron.toFixed(2)}t</b></span>
+      </div>
+      <div class="table-wrap"><table class="cost"><thead><tr><th>原価の内訳</th><th>金額</th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><th>原価 合計</th><td class="num"><b>¥${yen(r.cost)}</b></td></tr></tfoot></table></div>
+      <p class="hint">原価の単価は「⚙ 会社・単価設定」の「原価」で自社の値に変えられます。数字は目安です。</p>`;
+  }
+
+  // 日曜を休工日として、実働日を日付に割り当てる
+  function workDates(startIso, n) {
+    const out = []; if (!startIso) return out;
+    const d = new Date(startIso + 'T00:00:00');
+    while (out.length < n) { if (d.getDay() !== 0) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
+    return out;
+  }
+
+  function renderProcess(c, s) {
+    const plan = planOf(c);
+    const dates = workDates(c.startDate, plan.days);
+    let i = 0;
+    const spans = plan.phases.map((p) => { const from = i; i += p.days; return { ...p, from, to: i - 1 }; });
+    const md = (d) => (d ? `${d.getMonth() + 1}/${d.getDate()}` : '');
+    const head = Array.from({ length: plan.days }, (_, k) => `<th class="d">${dates[k] ? `${dates[k].getMonth() + 1}/${dates[k].getDate()}` : k + 1}</th>`).join('');
+    const body = spans.map((p) => `<tr><td class="ph">${esc(p.name)}</td><td class="num">${p.days}日</td><td class="num">${md(dates[p.from])}〜${md(dates[p.to])}</td>${Array.from({ length: plan.days }, (_, k) => `<td class="d ${k >= p.from && k <= p.to ? 'on' : ''}"></td>`).join('')}</tr>`).join('');
+    $('#processOut').innerHTML = `
+      <h1 style="letter-spacing:.3em">工程表</h1>
+      <div class="two small"><div>工事名：${blank(c.clientName, '')}様邸 解体工事<br>工事場所：${blank(c.siteAddress)}<br>構造：${STRUCT[c.structure]}　${esc(c.floors)}階建　延床 ${num(c.floorArea) || '　'}㎡</div>
+        <div class="right">${esc(s.name)}<br>実働 ${plan.days}日（日曜休工）<br>${dates.length ? `${fmtDate(dates[0])} 〜 ${fmtDate(dates[dates.length - 1])}` : '着工予定日を入力すると日付が入ります'}</div></div>
+      <div class="table-wrap"><table class="gantt"><thead><tr><th>工程</th><th>日数</th><th>期間</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+      <p class="small">・作業時間 8:30〜17:30。天候等により工程が前後する場合があります。<br>・建設リサイクル法に基づき、分別解体（内装材 → 屋根・外装 → 躯体 → 基礎の順）で施工します。</p>`;
+    if (dates.length && c.endDate !== dates[dates.length - 1].toISOString().slice(0, 10)) {
+      const last = dates[dates.length - 1];
+      const iso = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+      $('#processOut').insertAdjacentHTML('beforeend', `<p class="small no-print">完了予定日（${fmtIso(c.endDate) || '未入力'}）を工程表の最終日 ${fmtDate(last)} に合わせますか？ <button class="btn ghost" data-set-end="${iso}">合わせる</button></p>`);
+    }
   }
 
   function renderRecycle(c, s) {
@@ -248,7 +384,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -263,6 +399,10 @@
   });
   document.addEventListener('click', (e) => { if (e.target.closest('.print')) window.print(); });
 
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-set-end]'); if (!b) return;
+    cur().endDate = b.dataset.setEnd; save(); fillForm(caseForm, cur()); renderAll();
+  });
   $('#caseSelect').addEventListener('change', (e) => { state.currentId = e.target.value; save(); fillForm(caseForm, cur()); renderAll(); });
   $('#newCase').addEventListener('click', () => {
     const c = newCase(); state.cases.unshift(c); state.currentId = c.id; save(); fillForm(caseForm, c); renderAll();
@@ -279,6 +419,7 @@
     c.wConcrete = +(a * f.c + num(c.concreteM2) * 0.15 + num(c.blockM) * 0.2).toFixed(1);
     c.wWood = +(a * f.w + num(c.trees) * 0.1).toFixed(1);
     c.wAsphalt = +(a * f.a).toFixed(1);
+    c.wMixed = +(a * f.m).toFixed(1);
     save(); fillForm(caseForm, c); renderAll();
   });
   $('#exportBtn').addEventListener('click', () => {

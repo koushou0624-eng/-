@@ -73,3 +73,32 @@ input[type=checkbox] { width: auto; margin-right: 6px; }
   .paper { box-shadow: none; margin: 0; max-width: none; min-height: 0; padding: 0; }
   @page { size: A4; margin: 15mm; }
 }
+
+/* 利益チェック */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.kpi .k { color: var(--muted); font-size: 13px; }
+.kpi .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.kpi.good { border-color: #2f9e44; box-shadow: inset 0 0 0 1px #2f9e44; }
+.kpi.mid { border-color: #e8a400; box-shadow: inset 0 0 0 1px #e8a400; }
+.kpi.bad { border-color: #e03131; box-shadow: inset 0 0 0 1px #e03131; }
+.kpi.good .v { color: #2f9e44; } .kpi.bad .v { color: #e03131; }
+.callout { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; line-height: 1.7; }
+.callout.bad { border-color: #e03131; }
+.sub { color: var(--muted); font-size: 12px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 12px; color: var(--muted); font-size: 14px; }
+.facts b { color: var(--ink); }
+.table-wrap { overflow-x: auto; }
+table.cost { width: 100%; border-collapse: collapse; background: var(--panel); font-size: 14px; }
+table.cost th, table.cost td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+table.cost td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.cost td.minus { color: #2f9e44; }
+
+/* 工程表 */
+table.gantt { font-size: 11px; }
+table.gantt th.d, table.gantt td.d { width: 22px; min-width: 22px; padding: 2px; text-align: center; }
+table.gantt td.on { background: #d9480f; }
+table.gantt td.ph { white-space: nowrap; }
+@media print { table.gantt td.on { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+table.cost th:last-child { text-align: right; }
+.table-wrap + .hint { margin-top: 12px; }
