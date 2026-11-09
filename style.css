@@ -219,3 +219,4 @@ table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
 .members li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 #inviteUrlRow { margin-top: 8px; }
 #inviteUrlRow input { flex: 1; min-width: 0; margin-top: 0; }
+.pdf-msg { margin: 0; font-size: 13px; }

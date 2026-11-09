@@ -137,9 +137,9 @@
   </section>
 
   <!-- 書類系 -->
-  <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="estimateOut"></div></section>
+  <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="見積書">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span></div><div class="paper" id="estimateOut"></div></section>
   <section id="tab-profit" class="tab no-print"><div id="profitOut"></div></section>
-  <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
+  <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="工程表">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
   <section id="tab-manifest" class="tab no-print">
     <div id="manifestAlerts"></div>
     <h2>この案件のマニフェスト</h2>
@@ -180,9 +180,9 @@
     <datalist id="companyList"></datalist>
     <div id="leaseTotal"></div>
   </section>
-  <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
-  <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button></div><div class="paper" id="greetingOut"></div></section>
-  <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn print">印刷 / PDF保存</button><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
+  <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="リサイクル法届出下書き">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
+  <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="近隣挨拶文">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span></div><div class="paper" id="greetingOut"></div></section>
+  <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="建物取毀証明書">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
 
   <!-- 設定 -->
   <section id="tab-settings" class="tab no-print">
@@ -307,5 +307,6 @@
 <script src="core.js"></script>
 <script src="app.js"></script>
 <script src="cloud.js"></script>
+<script src="pdf.js"></script>
 </body>
 </html>
