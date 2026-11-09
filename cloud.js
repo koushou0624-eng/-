@@ -19,7 +19,7 @@
   }
 
   let meta = loadMeta(); // { userId, lastPull, synced: { 'kind:id': 内容 } }
-  let user = null, pushTimer = null, pushing = false, again = false, pulling = false;
+  let user = null, company = null, pushTimer = null, pushing = false, again = false, pulling = false;
 
   function loadMeta() { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || { synced: {} }; } catch (_) { return { synced: {} }; } }
   function saveMeta() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(meta)); } catch (_) { /* noop */ } }
@@ -38,7 +38,7 @@
 
   // ---------- 送る ----------
   async function push() {
-    if (!user) return;
+    if (!user || !company) return;
     if (pushing) { again = true; return; }
     pushing = true; again = false;
     try {
@@ -46,16 +46,16 @@
       const rows = [];
       Object.entries(docs).forEach(([k, d]) => {
         const j = stable(d.data);
-        if (meta.synced[k] !== j) rows.push({ k, j, row: { user_id: user.id, kind: d.kind, id: d.id, data: d.data, deleted: false } });
+        if (meta.synced[k] !== j) rows.push({ k, j, row: { company_id: company.id, kind: d.kind, id: d.id, data: d.data, deleted: false } });
       });
       Object.keys(meta.synced).forEach((k) => {
         if (docs[k]) return;
         const i = k.indexOf(':');
-        rows.push({ k, del: true, row: { user_id: user.id, kind: k.slice(0, i), id: k.slice(i + 1), data: {}, deleted: true } });
+        rows.push({ k, del: true, row: { company_id: company.id, kind: k.slice(0, i), id: k.slice(i + 1), data: {}, deleted: true } });
       });
       if (rows.length) {
         status('保存中…', 'busy');
-        const { error } = await sb.from('kj_docs').upsert(rows.map((r) => r.row), { onConflict: 'user_id,kind,id' });
+        const { error } = await sb.from('kj_docs').upsert(rows.map((r) => r.row), { onConflict: 'company_id,kind,id' });
         if (error) throw error;
         rows.forEach((r) => { if (r.del) delete meta.synced[r.k]; else meta.synced[r.k] = r.j; });
         saveMeta();
@@ -74,10 +74,10 @@
 
   // ---------- 受け取る ----------
   async function pull({ initial = false } = {}) {
-    if (!user || pulling) return;
+    if (!user || !company || pulling) return;
     pulling = true;
     try {
-      let q = sb.from('kj_docs').select('kind,id,data,deleted,updated_at').order('updated_at', { ascending: true });
+      let q = sb.from('kj_docs').select('kind,id,data,deleted,updated_at').eq('company_id', company.id).order('updated_at', { ascending: true });
       if (!initial && meta.lastPull) {
         const since = new Date(new Date(meta.lastPull).getTime() - 5000).toISOString(); // 少し重ねて取りこぼしを防ぐ
         q = q.gte('updated_at', since);
@@ -156,28 +156,168 @@
     $('#cloudBox').hidden = false;
     $('#cloudEmail').textContent = u.email || '';
     loadLine();
-    await pull({ initial: !meta.lastPull });
+    await chooseCompany();
   }
+
+  // ---------- 会社 ----------
+  const INVITE_KEY = 'kaitai-jimu-invite';
+  // 招待リンク（?invite=コード）で開かれたら、コードを覚えてアドレスから消す
+  (function takeInvite() {
+    const code = new URLSearchParams(location.search).get('invite');
+    if (!code) return;
+    try { sessionStorage.setItem(INVITE_KEY, code); } catch (_) { /* noop */ }
+    history.replaceState(null, '', location.pathname + location.hash);
+    $('#inviteNote').hidden = false;
+  })();
+  const pendingInvite = () => { try { return sessionStorage.getItem(INVITE_KEY); } catch (_) { return null; } };
+  const clearInvite = () => { try { sessionStorage.removeItem(INVITE_KEY); } catch (_) { /* noop */ } };
+
+  async function myCompanies() {
+    const { data, error } = await sb.from('kj_members').select('company_id, role, kj_companies(name)').eq('user_id', user.id).order('joined_at');
+    if (error) throw error;
+    return (data || []).map((m) => ({ id: m.company_id, role: m.role, name: (m.kj_companies && m.kj_companies.name) || '' }));
+  }
+
+  async function chooseCompany() {
+    try {
+      const code = pendingInvite();
+      if (code) {
+        const { error } = await sb.rpc('kj_join_company', { p_code: code });
+        clearInvite(); $('#inviteNote').hidden = true;
+        if (error) alertBox(/invalid_invite/.test(error.message) ? '招待リンクの期限が切れているか、正しくありません。会社の代表の人に新しいリンクをもらってください。' : '会社に参加できませんでした：' + error.message);
+        else meta.companyId = null; // 参加した会社を開く
+      }
+      const list = await myCompanies();
+      if (!list.length) { showCompanySetup(); return; }
+      company = list.find((c) => c.id === meta.companyId) || (code ? list[list.length - 1] : list[0]);
+      let migrated = false;
+      if (meta.companyId === undefined && meta.lastPull) {
+        // 会社のしくみができる前から使っていた端末：データはそのまま会社に引っ越し済みなので、同期の記録は引き継ぐ
+        meta.companyId = company.id; saveMeta(); migrated = true;
+      } else if (meta.companyId !== company.id) { meta.companyId = company.id; meta.synced = {}; meta.lastPull = null; saveMeta(); }
+      $('#companyOverlay').hidden = true;
+      renderCompanyBox(list);
+      await pull({ initial: !meta.lastPull });
+      if (migrated) await push(); // 引っ越し中に送れなかった入力があれば送る
+    } catch (e) {
+      console.warn('company failed', e);
+      status('⚠ オフライン', 'err');
+    }
+  }
+  function alertBox(msg) { const el = $('#companyError'); el.textContent = msg; }
+
+  function showCompanySetup() {
+    $('#companyOverlay').hidden = false;
+    $('#companyName').focus();
+  }
+  $('#companyCreate').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#companyName').value.trim(); if (!name) return;
+    const { error } = await sb.rpc('kj_create_company', { p_name: name });
+    if (error) { alertBox('会社を作れませんでした：' + error.message); return; }
+    meta.companyId = null; saveMeta();
+    await chooseCompany();
+  });
+  $('#companyJoin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    let code = $('#joinCode').value.trim();
+    const m = code.match(/invite=([0-9a-f]+)/); if (m) code = m[1]; // リンクごと貼ってもよい
+    if (!code) return;
+    try { sessionStorage.setItem(INVITE_KEY, code); } catch (_) { /* noop */ }
+    await chooseCompany();
+  });
+
+  // 設定画面の「会社」欄
+  async function renderCompanyBox(list) {
+    const box = $('#companyBox'); box.hidden = false;
+    const owner = company.role === 'owner';
+    $('#companyNameEdit').value = company.name; $('#companyNameEdit').disabled = !owner;
+    $('#companyRename').hidden = !owner; $('#inviteArea').hidden = !owner;
+    $('#companySwitch').closest('label').hidden = list.length < 2;
+    $('#companySwitch').innerHTML = list.map((c) => `<option value="${c.id}" ${c.id === company.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+    const { data } = await sb.from('kj_members').select('user_id, email, role, joined_at').eq('company_id', company.id).order('joined_at');
+    $('#memberList').innerHTML = (data || []).map((m) => `<li>${escapeHtml(m.email || '（メール不明）')} <span class="chip">${m.role === 'owner' ? '代表' : 'メンバー'}</span>${m.user_id === user.id ? ' <span class="chip">あなた</span>' : ''}${owner && m.user_id !== user.id ? ` <button type="button" class="btn ghost small" data-remove="${m.user_id}">外す</button>` : ''}</li>`).join('');
+  }
+  const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  $('#companyRename').addEventListener('click', async () => {
+    const name = $('#companyNameEdit').value.trim(); if (!name) return;
+    const { error } = await sb.from('kj_companies').update({ name }).eq('id', company.id);
+    $('#companyMsg').textContent = error ? '変更できませんでした：' + error.message : '会社名を変更しました。';
+    if (!error) company.name = name;
+  });
+  $('#inviteMake').addEventListener('click', async () => {
+    const { data, error } = await sb.rpc('kj_create_invite', { p_company: company.id });
+    if (error) { $('#companyMsg').textContent = '招待リンクを作れませんでした：' + error.message; return; }
+    const url = location.origin + location.pathname + '?invite=' + data;
+    $('#inviteUrl').value = url; $('#inviteUrlRow').hidden = false;
+    $('#companyMsg').textContent = 'このリンクを、同じ会社の人にLINEなどで送ってください（7日間有効）。';
+  });
+  $('#inviteCopy').addEventListener('click', async () => {
+    const el = $('#inviteUrl');
+    try { await navigator.clipboard.writeText(el.value); $('#companyMsg').textContent = 'コピーしました。'; }
+    catch (_) { el.select(); $('#companyMsg').textContent = '選択しました。コピーしてください。'; }
+  });
+  const removeArmed = {};
+  $('#memberList').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-remove]'); if (!b) return;
+    const id = b.dataset.remove;
+    if (!removeArmed[id]) { b.textContent = 'もう一度押すと外す'; removeArmed[id] = setTimeout(() => { b.textContent = '外す'; delete removeArmed[id]; }, 3000); return; }
+    clearTimeout(removeArmed[id]); delete removeArmed[id];
+    const { error } = await sb.from('kj_members').delete().eq('company_id', company.id).eq('user_id', id);
+    $('#companyMsg').textContent = error ? '外せませんでした：' + error.message : 'メンバーから外しました。';
+    renderCompanyBox(await myCompanies());
+  });
+  $('#companySwitch').addEventListener('change', async (e) => {
+    await push();
+    meta.companyId = e.target.value; meta.synced = {}; meta.lastPull = null; saveMeta();
+    await chooseCompany();
+  });
+
+  let signupMode = false;
+  function setMode(signup) {
+    signupMode = signup;
+    $('#loginTitle').textContent = signup ? '新規登録' : 'ログイン';
+    $('#loginSubmit').textContent = signup ? '登録する' : 'ログイン';
+    $('#loginPassword2Row').hidden = !signup;
+    $('#loginPassword').autocomplete = signup ? 'new-password' : 'current-password';
+    $('#loginToggle').textContent = signup ? 'アカウントをお持ちの方はこちら（ログイン）' : 'はじめての方はこちら（新規登録）';
+    $('#loginError').textContent = '';
+  }
+  $('#loginToggle').addEventListener('click', () => setMode(!signupMode));
+  if (pendingInvite()) setMode(true);
 
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = $('#loginForm button'), err = $('#loginError');
-    err.textContent = ''; btn.disabled = true; btn.textContent = 'ログイン中…';
-    const { data, error } = await sb.auth.signInWithPassword({ email: $('#loginEmail').value.trim(), password: $('#loginPassword').value });
-    btn.disabled = false; btn.textContent = 'ログイン';
+    const btn = $('#loginSubmit'), err = $('#loginError');
+    const email = $('#loginEmail').value.trim(), password = $('#loginPassword').value;
+    err.textContent = '';
+    if (signupMode) {
+      if (password.length < 8) { err.textContent = 'パスワードは8文字以上にしてください。'; return; }
+      if (password !== $('#loginPassword2').value) { err.textContent = '確認用のパスワードが一致しません。'; return; }
+    }
+    btn.disabled = true; btn.textContent = signupMode ? '登録中…' : 'ログイン中…';
+    const { data, error } = signupMode ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = signupMode ? '登録する' : 'ログイン';
     if (error) {
-      err.textContent = /invalid login/i.test(error.message) ? 'メールアドレスかパスワードが違います。' : /fetch|network/i.test(error.message) ? 'インターネットにつながっていません。' : 'ログインできませんでした：' + error.message;
+      const m = error.message || '';
+      err.textContent = /invalid login/i.test(m) ? 'メールアドレスかパスワードが違います。'
+        : /already registered|already exists/i.test(m) ? 'このメールアドレスは登録済みです。ログインしてください。'
+        : /signups? not allowed|signup_disabled/i.test(m) ? '今は新規登録を受け付けていません。'
+        : /fetch|network/i.test(m) ? 'インターネットにつながっていません。'
+        : (signupMode ? '登録できませんでした：' : 'ログインできませんでした：') + m;
       return;
     }
-    $('#loginPassword').value = '';
+    if (signupMode && !data.session) { err.textContent = '確認メールを送りました。メールのリンクを開いてから、ログインしてください。'; setMode(false); return; }
+    $('#loginPassword').value = ''; $('#loginPassword2').value = '';
     onLogin(data.user);
   });
 
   $('#logoutBtn').addEventListener('click', async () => {
     await sb.auth.signOut();
-    user = null;
+    user = null; company = null;
     $('#cloudBox').hidden = true;
     $('#lineBox').hidden = true;
+    $('#companyBox').hidden = true;
     showLogin();
   });
 

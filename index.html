@@ -34,12 +34,32 @@
 <div id="loginOverlay" class="login" hidden>
   <form id="loginForm" class="login-card">
     <h1>カイタイ事務</h1>
-    <p class="hint">メールアドレスとパスワードでログインしてください。</p>
+    <p class="hint"><b id="loginTitle">ログイン</b>：メールアドレスとパスワードを入れてください。</p>
+    <p id="inviteNote" class="invite-note" hidden>会社への招待を受け取りました。登録（またはログイン）すると、その会社に参加します。</p>
     <label for="loginEmail">メールアドレス<input id="loginEmail" type="email" autocomplete="username" required></label>
-    <label for="loginPassword">パスワード<input id="loginPassword" type="password" autocomplete="current-password" required></label>
-    <button class="btn" type="submit">ログイン</button>
+    <label for="loginPassword">パスワード（8文字以上）<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+    <label id="loginPassword2Row" for="loginPassword2" hidden>パスワード（確認のためもう一度）<input id="loginPassword2" type="password" autocomplete="new-password"></label>
+    <button id="loginSubmit" class="btn" type="submit">ログイン</button>
     <p id="loginError" class="login-error" role="alert"></p>
+    <button type="button" id="loginToggle" class="link">はじめての方はこちら（新規登録）</button>
   </form>
+</div>
+
+<div id="companyOverlay" class="login" hidden>
+  <div class="login-card">
+    <h1>会社の設定</h1>
+    <p class="hint">はじめに、会社を作るか、招待された会社に参加してください。</p>
+    <form id="companyCreate">
+      <label for="companyName">会社を作る（あなたが代表になります）<input id="companyName" placeholder="例：〇〇解体株式会社" maxlength="100"></label>
+      <button class="btn" type="submit">会社を作る</button>
+    </form>
+    <hr>
+    <form id="companyJoin">
+      <label for="joinCode">招待リンクで参加する（代表の人から届いたリンクを貼り付け）<input id="joinCode" placeholder="https://…?invite=…"></label>
+      <button class="btn ghost" type="submit">参加する</button>
+    </form>
+    <p id="companyError" class="login-error" role="alert"></p>
+  </div>
 </div>
 
 <main>
@@ -242,6 +262,19 @@
         <label>目標粗利率（％）<input name="targetMargin" type="number"></label>
       </fieldset>
     </form>
+    <fieldset id="companyBox" class="cloudbox" hidden>
+      <legend>会社とメンバー</legend>
+      <label for="companySwitch" class="inline" hidden>会社を切り替え <select id="companySwitch"></select></label>
+      <label for="companyNameEdit">会社名<input id="companyNameEdit" maxlength="100"></label>
+      <button type="button" id="companyRename" class="btn ghost small">会社名を変更</button>
+      <p class="hint" style="margin-top:12px">この会社のデータを見られる人</p>
+      <ul id="memberList" class="members"></ul>
+      <div id="inviteArea">
+        <button type="button" id="inviteMake" class="btn">＋ 招待リンクを作る</button>
+        <div id="inviteUrlRow" class="rare-row" hidden><input id="inviteUrl" readonly><button type="button" id="inviteCopy" class="btn ghost">コピー</button></div>
+      </div>
+      <p id="companyMsg" class="hint" role="status"></p>
+    </fieldset>
     <fieldset id="cloudBox" class="cloudbox" hidden>
       <legend>アカウント</legend>
       <p>ログイン中：<b id="cloudEmail"></b></p>

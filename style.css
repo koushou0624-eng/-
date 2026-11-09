@@ -209,3 +209,13 @@ table.cost.mini th, table.cost.mini td { padding: 5px 8px; }
 .login-error { color: #e03131; min-height: 1.4em; margin: 8px 0 0; font-size: 14px; }
 .cloudbox { margin: 12px 0; }
 [hidden] { display: none !important; }
+
+/* 会社・新規登録 */
+.login-card form { margin: 0; }
+.login-card hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.login-card .link { display: block; margin: 12px auto 0; font-size: 14px; }
+.invite-note { background: var(--soft); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+.members { list-style: none; padding: 0; margin: 4px 0 12px; display: grid; gap: 6px; }
+.members li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#inviteUrlRow { margin-top: 8px; }
+#inviteUrlRow input { flex: 1; min-width: 0; margin-top: 0; }

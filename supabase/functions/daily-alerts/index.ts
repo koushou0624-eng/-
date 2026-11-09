@@ -32,7 +32,11 @@ async function pushLine(token: string, to: string, text: string) {
 
 // deno-lint-ignore no-explicit-any
 async function stateOf(admin: any, userId: string) {
-  const { data, error } = await admin.from('kj_docs').select('kind,data').eq('user_id', userId).eq('deleted', false);
+  // その人が所属する会社（いちばん先に入った会社）のデータで注意を作る
+  const { data: mem, error: me } = await admin.from('kj_members').select('company_id').eq('user_id', userId).order('joined_at').limit(1);
+  if (me) throw me;
+  if (!mem || !mem.length) return { settings: {}, cases: [] };
+  const { data, error } = await admin.from('kj_docs').select('kind,data').eq('company_id', mem[0].company_id).eq('deleted', false);
   if (error) throw error;
   const state = { settings: {}, cases: [] as unknown[] };
   // deno-lint-ignore no-explicit-any
