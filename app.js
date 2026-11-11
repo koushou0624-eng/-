@@ -895,6 +895,35 @@
       <p class="small">※ 印鑑証明書（または資格証明書）と合わせて施主様にお渡しください。</p>`;
   }
 
+  // ---------- スマホ：表を「1行＝1枚のカード」で見せるため、各マスに列の名前をつける ----------
+  function labelTables(root) {
+    root.querySelectorAll('table.cost').forEach((t) => {
+      const heads = [...t.querySelectorAll('thead th')].map((h) => h.textContent.trim());
+      t.querySelectorAll('tbody tr, tfoot tr').forEach((tr) => {
+        let col = 0;
+        [...tr.children].forEach((cell, i) => {
+          if (i > 0 && !cell.dataset.label) cell.dataset.label = heads[col] || '';
+          col += cell.colSpan || 1;
+        });
+      });
+    });
+  }
+  let labelTimer = 0;
+  new MutationObserver(() => { clearTimeout(labelTimer); labelTimer = setTimeout(() => labelTables(document), 30); })
+    .observe(document.querySelector('main') || document.body, { childList: true, subtree: true });
+
+  // ---------- 設定：見出しを押すと開く（最初は全部閉じる） ----------
+  function foldSettings() {
+    document.querySelectorAll('#tab-settings fieldset').forEach((fs) => {
+      if (fs.dataset.fold) return; fs.dataset.fold = '1'; fs.classList.add('fold-fs', 'closed');
+      const lg = fs.querySelector(':scope > legend'); if (!lg) return;
+      lg.setAttribute('role', 'button'); lg.tabIndex = 0;
+      const tog = () => fs.classList.toggle('closed');
+      lg.addEventListener('click', tog); lg.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(); } });
+    });
+  }
+  window.KJOpenSetting = (id) => { const fs = document.getElementById(id); if (fs) fs.classList.remove('closed'); return fs; };
+
   function renderAll() {
     const c = cur(), s = state.settings;
     renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderQuick(); renderWasteLog(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
@@ -1049,7 +1078,7 @@
   }
   $('#lineLogOut').addEventListener('click', (e) => {
     const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'waste'); return; }
-    if (e.target.closest('[data-tolink]')) { setSection('settings'); setTimeout(() => $('#lineInBox')?.scrollIntoView({ block: 'start' }), 50); }
+    if (e.target.closest('[data-tolink]')) { setSection('settings'); setTimeout(() => KJOpenSetting('lineInBox')?.scrollIntoView({ block: 'start' }), 50); }
   });
 
   // ---------- 処分：1行で記録 ----------
@@ -1379,6 +1408,7 @@
     try { saved = JSON.parse(localStorage.getItem('kaitai-jimu-nav')); } catch (_) { /* noop */ }
     if (saved && saved.lastTab) Object.assign(lastTab, saved.lastTab);
     setSection(saved && SECTIONS[saved.sec] ? saved.sec : 'home');
+    foldSettings(); labelTables(document);
     window.KJNav = { go, openCase, setSection }; // テスト・他の部品から画面を開くため
   })();
 

@@ -411,3 +411,40 @@ main { max-width: 720px; }
 .sheet-title { font-size: 18px; font-weight: 700; margin: 4px 4px 12px; }
 .plist { list-style: none; margin: 0 0 12px; padding: 0; background: var(--panel); border-radius: 16px; overflow: hidden; }
 .plist li { border-bottom: 1px solid var(--line); } .plist li:last-child { border-bottom: 0; }
+
+/* ===== 見やすさの調整（4）：設定は見出しだけ並べる／スマホの表はカードに ===== */
+.set-title { margin: 4px 0 2px; font-size: 24px; }
+.set-hint { margin: 0 0 12px; }
+#tab-settings .grid { display: block; }
+#tab-settings fieldset.fold-fs { display: block; margin: 0 0 10px; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+#tab-settings fieldset.fold-fs[hidden] { display: none !important; }
+#tab-settings fieldset.fold-fs > legend { float: left; width: 100%; box-sizing: border-box; margin: 0; padding: 16px; font-size: 17px; font-weight: 700; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+#tab-settings fieldset.fold-fs > legend::after { content: '›'; font-size: 22px; color: #b0b6bd; transform: rotate(90deg); transition: transform .15s; }
+#tab-settings fieldset.fold-fs.closed > legend::after { transform: none; }
+#tab-settings fieldset.fold-fs > :not(legend) { margin-left: 16px; margin-right: 16px; }
+#tab-settings fieldset.fold-fs > legend + * { clear: both; }
+#tab-settings fieldset.fold-fs > :last-child { margin-bottom: 16px; }
+#tab-settings fieldset.fold-fs.closed > :not(legend) { display: none !important; }
+
+@media (max-width: 600px) {
+  .table-wrap { overflow: visible; }
+  table.cost, table.cost.wide { min-width: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  table.cost thead { display: none; }
+  table.cost, table.cost tbody, table.cost tfoot, table.cost tr { display: block; width: auto; }
+  table.cost tr { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  table.cost tr:last-child { border-bottom: 0; }
+  table.cost td, table.cost th, table.cost.wide td, table.cost.wide th { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; border: 0; text-align: right; white-space: normal; font-size: 15px; }
+  table.cost td::before, table.cost th::before { content: attr(data-label); color: var(--muted); font-size: 13px; text-align: left; font-weight: 400; flex: none; max-width: 55%; }
+  table.cost tr > :first-child { display: block; text-align: left; font-weight: 700; font-size: 16px; padding-bottom: 4px; }
+  table.cost tr > :first-child::before { content: none; }
+  table.cost td[data-label=""]::before { content: none; }
+  table.cost td:empty { display: none; }
+  table.cost tfoot { background: var(--soft, #f1f3f5); }
+  table.cost tfoot th, table.cost tfoot td { border-top: 0; }
+}
+@media (max-width: 600px) {
+  /* 2列だけの表（名前と金額）は1行に並べる */
+  table.cost tr:has(> :nth-child(2):last-child) { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  table.cost tr:has(> :nth-child(2):last-child) > :last-child::before { content: none; }
+  table.cost tr:has(> :nth-child(2):last-child) > :first-child { padding-bottom: 0; font-size: 15px; }
+}
