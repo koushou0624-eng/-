@@ -239,7 +239,7 @@
 
     if (!c.startDate) items.push('<p class="hint">着工予定日を入力すると、各届出の期限を自動計算します。</p>');
     item(area >= 80, '建設リサイクル法 事前届出', addDays(c.startDate, -7),
-      `延床面積80㎡以上の解体は、発注者（施主）が着工7日前までに届出（業者が委任を受けて代行するのが一般的）。現在の延床：${area || '-'}㎡。→「④ 届出下書き」タブ`);
+      `延床面積80㎡以上の解体は、発注者（施主）が着工7日前までに届出（業者が委任を受けて代行するのが一般的）。現在の延床：${area || '-'}㎡。→「書類 › 届出」`);
     item(area >= 80, '石綿（アスベスト）事前調査結果報告（電子報告）', addDays(c.startDate, -1),
       '解体部分の床面積80㎡以上は、元請業者が工事開始前に「石綿事前調査結果報告システム」で労働基準監督署・自治体へ報告。調査は有資格者が実施。');
     if (c.asbestos === 'unknown') item(true, 'アスベスト事前調査の実施', addDays(c.startDate, -14), '調査結果が「未調査」です。面積にかかわらず事前調査は必須です。');
@@ -249,11 +249,11 @@
       if (by <= 2006) items.unshift(`<div class="deadline need"><div class="when">アスベスト判定｜${by}年築：含有の可能性あり</div><div class="sub">2006年9月以前に着工した建物は、石綿含有建材が使われている可能性があります。有資格者による書面調査・目視調査、必要に応じて分析調査を行ってください。${by === 2006 ? '（2006年築は着工日が9月1日より前か後かを確認）' : ''}</div></div>`);
       else items.unshift(`<div class="deadline ok"><div class="when">アスベスト判定｜${by}年築：含有の可能性は低い</div><div class="sub">着工日が2006年9月1日以降であることを設計図書等で確認できれば、書面調査で「含有なし」と判断できます。事前調査と結果報告（80㎡以上）自体は必要です。</div></div>`);
     }
-    item(true, '近隣挨拶', addDays(c.startDate, -7), '着工1週間〜10日前が目安。→「⑤ 近隣挨拶文」タブ');
+    item(true, '近隣挨拶', addDays(c.startDate, -7), '着工1週間〜10日前が目安。→「書類 › 挨拶文」');
     item(!!c.narrowRoad, '道路使用許可（所轄警察署）', addDays(c.startDate, -7), '道路上に車両を止めて作業する場合に必要。処理に数日かかるため早めに申請。');
-    item(true, '建物取毀証明書の発行 → 施主の滅失登記', addMonths(c.endDate, 1), '解体完了後、施主が1か月以内に法務局へ建物滅失登記。→「⑥ 取毀証明書」タブ');
+    item(true, '建物取毀証明書の発行 → 施主の滅失登記', addMonths(c.endDate, 1), '解体完了後、施主が1か月以内に法務局へ建物滅失登記。→「書類 › 取毀証明」');
     const ms = manifestsOf(c), open = ms.filter((m) => m.kind === 'paper' && !(m.b2 && m.d && m.e)).length;
-    item(true, 'マニフェスト（産業廃棄物管理票）の交付・回収', null, `搬出ごとに交付。紙の場合はB2・D票90日、E票180日以内の返送を確認。登録 ${ms.length}枚${open ? `（返送待ち ${open}枚）` : ''} →「🚛 マニフェスト」タブ`);
+    item(true, 'マニフェスト（産業廃棄物管理票）の交付・回収', null, `搬出ごとに交付。紙の場合はB2・D票90日、E票180日以内の返送を確認。登録 ${ms.length}枚${open ? `（返送待ち ${open}枚）` : ''} →「処分」タブ`);
     $('#scheduleOut').innerHTML = `<h2>期限・やることチェック</h2>${items.join('')}`;
   }
 
@@ -317,7 +317,7 @@
       </div>
       <div class="table-wrap"><table class="cost"><thead><tr><th>原価の内訳</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th>原価 合計</th><td class="num"><b>¥${yen(r.cost)}</b></td></tr></tfoot></table></div>
-      <p class="hint">原価の単価は「⚙ 会社・単価設定」の「原価」で自社の値に変えられます。数字は目安です。</p>
+      <p class="hint">原価の単価は「設定」の「原価」で自社の値に変えられます。数字は目安です。</p>
       ${actualHtml(c, r)}`;
   }
 
@@ -325,7 +325,7 @@
   function actualHtml(c, r) {
     const disp = dispSummary(c), exp = expenseSummary(c), ls = leaseSummary(c);
     if (!disp.total && !exp.total && !ls.total) {
-      return '<h2>実際の利益（実績）</h2><p class="hint">「🚛 マニフェスト」に数量、「⛽ 経費」に消耗品・高速代・燃料費、「🚜 リース」に借りた機械を入れると、見込みと実際の利益を比べられます。</p>';
+      return '<h2>実際の利益（実績）</h2><p class="hint">「処分」に数量、「お金 › 経費」に消耗品・高速代・燃料費、「お金 › リース」に借りた機械を入れると、見込みと実際の利益を比べられます。</p>';
     }
     const estMachine = r.rows.filter((x) => x.name.startsWith('重機') || x.name.startsWith('ダンプ運搬')).reduce((a, x) => a + x.amount, 0);
     const estDisp = r.rows.filter((x) => x.name.startsWith('処分費')).reduce((a, x) => a + x.amount, 0);
@@ -470,7 +470,7 @@
       <label class="inline" for="billMonth">請求月 <select id="billMonth">${months.map((x) => `<option value="${x}" ${x === mon ? 'selected' : ''}>${x.replace('-', '年')}月分</option>`).join('')}</select></label>
       <div class="table-wrap"><table class="cost wide"><thead><tr><th>処分場（締め・期間・現場の内訳）</th><th class="num">枚数</th><th class="num">数量</th><th class="num">請求額（税抜）</th><th>状態</th></tr></thead>
         <tbody>${rows}</tbody><tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td><td></td></tr></tfoot></table></div>
-      <p class="hint">処分場から届いた請求書と、枚数・金額を照らし合わせてください。締め日は「⚙ 会社・単価設定」の「処分場ごとの単価」で処分場ごとに変えられます。</p>`;
+      <p class="hint">処分場から届いた請求書と、枚数・金額を照らし合わせてください。締め日は「設定」の「処分場ごとの単価」で処分場ごとに変えられます。</p>`;
   }
   function gsumHtml(c, type) {
     const w = WT[type], list = manifestsOf(c).filter((m) => m.type === type);
@@ -750,7 +750,7 @@
       <h2>リース代の合計</h2>
       <div class="table-wrap"><table class="cost wide"><thead><tr><th>機械</th><th class="num">使用日数</th><th>計算</th><th class="num">リース代（回送費込み）</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td></tr></tfoot></table></div>
-      <p class="hint">月極の区切り：${LEASE_MODES[state.settings.leaseMode] || LEASE_MODES.calendar}（「⚙ 会社・単価設定」で変更できます）。締めごとに、使った日数が決めた日数を超えたら月極、超えなければ日割りで計算します。</p>` : '';
+      <p class="hint">月極の区切り：${LEASE_MODES[state.settings.leaseMode] || LEASE_MODES.calendar}（「設定」で変更できます）。締めごとに、使った日数が決めた日数を超えたら月極、超えなければ日割りで計算します。</p>` : '';
   }
   // 全案件の注意（月極が近い・月極になった）
   function renderLeaseAlerts() {
