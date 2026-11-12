@@ -1,0 +1,16 @@
+{
+  "name": "カイタイ事務",
+  "short_name": "カイタイ事務",
+  "description": "解体工事の処分・お金・書類をスマホひとつで。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f0eb",
+  "theme_color": "#1d3b63",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

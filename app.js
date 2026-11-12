@@ -926,7 +926,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderQuick(); renderWasteLog(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -1033,9 +1033,15 @@
     const order = { live: 0, plan: 1, done: 2 };
     const cases = state.cases.slice().sort((x, y) => order[caseStatus(x)[0]] - order[caseStatus(y)[0]]);
     const allT = cases.reduce((s2, c) => s2 + monthDisp(c, ym).t, 0);
+    const allY = cases.reduce((s2, c) => s2 + monthDisp(c, ym).cost, 0);
+    const liveN = cases.filter((c) => caseStatus(c)[0] === 'live').length;
+    const hr = now.getHours(), hello = hr < 10 ? 'おはようございます' : hr < 18 ? 'おつかれさまです' : 'おつかれさまでした';
     $('#homeOut').innerHTML = `
-      <h1 class="h-date">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</h1>
-      <p class="h-sub">現場 ${cases.length}件・今月の処分 ${tTxt(allT)}</p>
+      <section class="hero">
+        <div class="hero-top"><span class="hero-hello">${hello}</span><span class="hero-date">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</span></div>
+        <div class="hero-main"><span class="hero-lab">${now.getMonth() + 1}月の処分代</span><b class="hero-big">¥${yen(allY)}</b></div>
+        <div class="hero-grid"><div><span>処分した量</span><b>${tTxt(allT)}</b></div><div><span>工事中の現場</span><b>${liveN}<small>件</small></b></div><div><span>全部の現場</span><b>${cases.length}<small>件</small></b></div></div>
+      </section>
       ${alerts.length ? `<button type="button" class="alert-pill" data-alerts><span>⚠ 注意が ${alerts.length}件 あります</span><span>${alertsOpen ? '閉じる' : '見る ›'}</span></button>
         ${alertsOpen ? `<ul class="alert-list">${alerts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}` : '<p class="ok-line">✓ 今日の注意はありません</p>'}
       <p class="sec-label">現場</p>
@@ -1052,18 +1058,11 @@
     if (e.target.closest('[data-alerts]')) { alertsOpen = !alertsOpen; renderHome(); return; }
     const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'waste'); return; }
     const act = e.target.closest('[data-act]'); if (!act) return;
-    if (act.dataset.act === 'newcase') { $('#newCase').click(); openCase(state.currentId, 'info'); }
+    if (act.dataset.act === 'newcase') openCaseSheet();
     if (act.dataset.act === 'record') {
       const live = state.cases.filter((c) => caseStatus(c)[0] === 'live');
-      if (state.cases.length === 1 || live.length === 1) { openCase((live[0] || state.cases[0]).id, 'waste'); openQuick(); return; }
-      $('#pickCaseList').innerHTML = state.cases.map((c) => `<li><button type="button" class="row" data-pick="${c.id}"><span class="r-main"><span class="r-title">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</span><span class="r-sub">${esc(c.siteAddress || '')}</span></span><span class="chev">›</span></button></li>`).join('');
-      $('#pickCase').hidden = false;
+      openRec((live.find((c) => c.id === state.currentId) || live[0] || cur()).id);
     }
-  });
-  $('#pickCase').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pick]');
-    if (b) { $('#pickCase').hidden = true; openCase(b.dataset.pick, 'waste'); openQuick(); return; }
-    if (e.target.id === 'pickCase' || e.target.id === 'pickCaseClose') $('#pickCase').hidden = true;
   });
 
   // ---------- LINEの記録（全現場） ----------
@@ -1082,31 +1081,156 @@
   });
 
   // ---------- 処分：1行で記録 ----------
-  function renderQuick() {
-    const c = cur();
-    $('#quickCase').textContent = caseName(c);
-    const sel = $('#qwType');
-    if (!sel.options.length) sel.innerHTML = WASTE_TYPES.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join('');
-    if (!$('#qwDate').value) $('#qwDate').value = todayIso();
+  // 前回の選び方（この端末だけ）を覚えておき、次は最初から選んだ状態にする
+  const REC_KEY = 'kaitai-jimu-rec';
+  const recMem = () => { try { return JSON.parse(localStorage.getItem(REC_KEY)) || {}; } catch (_) { return {}; } };
+  const recRemember = (o) => { try { localStorage.setItem(REC_KEY, JSON.stringify({ ...recMem(), ...o })); } catch (_) { /* noop */ } };
+  let R = null; // 入力中の記録
+  const allMs = () => state.cases.flatMap((c) => manifestsOf(c).map((m) => ({ ...m, _c: c.id })));
+  const ymdShift = (d) => { const x = today(); x.setDate(x.getDate() + d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  function recTypes() {
+    const cnt = {}; allMs().forEach((m) => { cnt[m.type] = (cnt[m.type] || 0) + 1; });
+    const base = [...new Set([...(state.settings.alwaysTypes || []), ...Object.keys(cnt)])].filter((t) => WT[t]);
+    const order = (state.settings.alwaysTypes || []);
+    base.sort((a, b) => (cnt[b] || 0) - (cnt[a] || 0) || order.indexOf(a) - order.indexOf(b));
+    return { main: base, rest: WASTE_TYPES.map((w) => w.id).filter((t) => !base.includes(t)) };
   }
-  function openQuick() { $('#quickWaste').hidden = false; $('#qwOpen').hidden = true; setTimeout(() => $('#qwQty').focus(), 60); }
-  function closeQuick() { $('#quickWaste').hidden = true; $('#qwOpen').hidden = false; }
-  $('#qwOpen').addEventListener('click', openQuick);
-  $('#qwCancel').addEventListener('click', closeQuick);
-  $('#quickWaste').addEventListener('submit', (e) => {
-    e.preventDefault();
-    let qty = num($('#qwQty').value);
-    if (!(qty > 0)) { $('#qwQty').focus(); toast('重さを入れてください'); return; }
-    let kgNote = '';
-    if (qty >= 100) { kgNote = `（${qty}kg → ${qty / 1000}t に直しました）`; qty = qty / 1000; }
-    const c = cur();
-    const site = $('#qwSite').value.trim() || state.settings.defDisposer || '';
-    manifestsOf(c).push(newManifest(c, { type: $('#qwType').value, qty: String(qty), disposer: site, date: $('#qwDate').value || todayIso() }));
-    $('#qwQty').value = '';
-    save(); renderAll();
-    toast(`記録しました：${(WT[$('#qwType').value] || {}).name} ${qty}t${kgNote}`);
-    closeQuick();
+  function recDisposers() {
+    const out = [];
+    allMs().slice().reverse().forEach((m) => { if (m.disposer && !out.includes(m.disposer)) out.push(m.disposer); });
+    (state.settings.sites || []).forEach((s) => { if (s.name && !out.includes(s.name)) out.push(s.name); });
+    if (state.settings.defDisposer && !out.includes(state.settings.defDisposer)) out.push(state.settings.defDisposer);
+    return out.slice(0, 8);
+  }
+  function recQtys(type) {
+    const out = [];
+    allMs().slice().reverse().forEach((m) => { const q = num(m.qty); if (m.type === type && q > 0 && q < 100 && !out.includes(q)) out.push(q); });
+    [2, 3, 4, 1].forEach((q) => { if (out.length < 4 && !out.includes(q)) out.push(q); });
+    return out.slice(0, 4).sort((a, b) => a - b);
+  }
+  function openRec(caseId) {
+    const mem = recMem(), types = recTypes();
+    const type = (mem.type && WT[mem.type]) ? mem.type : types.main[0] || 'concrete';
+    const disp = recDisposers();
+    R = { caseId: caseId || cur().id, type, qty: '', unit: 't', disposer: mem.disposer && disp.includes(mem.disposer) ? mem.disposer : (disp[0] || ''), date: todayIso(), more: false, typing: false };
+    $('#recForm').hidden = false; $('#recDone').hidden = true; $('#recSheet').hidden = false;
+    document.body.classList.add('sheet-open');
+    renderRec();
+  }
+  function closeRec() { $('#recSheet').hidden = true; document.body.classList.remove('sheet-open'); R = null; }
+  const chipBtn = (attr, v, label, on, extra = '') => `<button type="button" class="cbtn ${on ? 'on' : ''}" data-${attr}="${esc(String(v))}" ${extra}>${label}</button>`;
+  function renderRec() {
+    if (!R) return;
+    const cases = state.cases.filter((c) => caseStatus(c)[0] !== 'done');
+    const list = cases.length ? cases : state.cases;
+    if (!list.some((c) => c.id === R.caseId)) list.unshift(state.cases.find((c) => c.id === R.caseId) || cur());
+    const t = recTypes(), types = R.more ? [...t.main, ...t.rest] : t.main;
+    const disp = recDisposers();
+    const qtys = recQtys(R.type);
+    const dateIs = R.date === todayIso() ? 'today' : R.date === ymdShift(-1) ? 'yday' : 'other';
+    $('#recBody').innerHTML = `
+      <div class="field"><div class="flabel"><i>1</i>どの現場？</div>
+        <div class="choice scroll">${list.map((c) => chipBtn('rcase', c.id, esc(caseName(c)), c.id === R.caseId)).join('')}</div></div>
+      <div class="field"><div class="flabel"><i>2</i>なにを捨てた？</div>
+        <div class="choice types">${types.map((id) => chipBtn('rtype', id, `<span class="sw" style="--wc:${WCOLOR[id] || '#888'}"></span>${esc(WT[id].name)}`, id === R.type)).join('')}
+        ${t.rest.length ? `<button type="button" class="cbtn more" data-rmore>${R.more ? '少なく表示' : '＋ ほかの種類'}</button>` : ''}</div></div>
+      <div class="field"><div class="flabel"><i>3</i>重さは？</div>
+        <div class="qty-row"><input id="recQty" class="qty-in" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${esc(R.qty)}" aria-label="重さ">
+          <div class="unit">${['t', 'kg'].map((u) => `<button type="button" data-runit="${u}" class="${R.unit === u ? 'on' : ''}">${u}</button>`).join('')}</div></div>
+        <div class="choice">${qtys.map((q) => chipBtn('rqty', q, `${q}${R.unit === 'kg' ? 't' : 't'}`, String(q) === String(R.qty) && R.unit === 't')).join('')}</div></div>
+      <div class="field"><div class="flabel"><i>4</i>どこに捨てた？</div>
+        <div class="choice">${disp.map((d) => chipBtn('rdisp', d, esc(d), d === R.disposer && !R.typing)).join('')}
+          <button type="button" class="cbtn more ${R.typing ? 'on' : ''}" data-rtype-disp>${disp.length ? '＋ ほかの処分場' : '処分場を入れる'}</button></div>
+        ${R.typing ? `<input id="recDisp" list="disposerList" placeholder="処分場の名前" value="${esc(R.disposer)}" autocomplete="off">` : ''}</div>
+      <div class="field"><div class="flabel"><i>5</i>いつ？</div>
+        <div class="choice">${chipBtn('rdate', 'today', '今日', dateIs === 'today')}${chipBtn('rdate', 'yday', '昨日', dateIs === 'yday')}
+          <label class="cbtn date ${dateIs === 'other' ? 'on' : ''}">${dateIs === 'other' ? md(R.date) : '日付を選ぶ'}<input type="date" id="recDate" value="${R.date}"></label></div></div>`;
+    recUpdate();
+  }
+  function recQtyT() { const q = num(R.qty); return R.unit === 'kg' ? q / 1000 : q; }
+  function recUpdate() {
+    const q = recQtyT(), w = WT[R.type] || {};
+    const price = unitPriceOf({ type: R.type, disposer: R.disposer, price: '' });
+    $('#recPreview').innerHTML = q > 0 ? `${esc(caseName(state.cases.find((c) => c.id === R.caseId) || cur()))}・${esc(R.disposer || '処分場なし')}${price ? `<span>処分代の目安 <b>¥${yen(Math.round(q * price))}</b></span>` : ''}` : '<span class="mut">重さを入れると、処分代の目安が出ます</span>';
+    const b = $('#recSubmit'); b.disabled = !(q > 0);
+    b.textContent = q > 0 ? `${w.name || ''} ${Math.round(q * 1000) / 1000}t を記録する` : '重さを入れてください';
+  }
+  $('#recSheet').addEventListener('click', (e) => {
+    if (e.target.id === 'recSheet' || e.target.closest('[data-close]')) { closeRec(); return; }
+    if (!R) return;
+    const g = (k) => e.target.closest(`[data-${k}]`);
+    let b;
+    if ((b = g('rcase'))) R.caseId = b.dataset.rcase;
+    else if ((b = g('rtype'))) R.type = b.dataset.rtype;
+    else if (g('rmore')) R.more = !R.more;
+    else if ((b = g('runit'))) R.unit = b.dataset.runit;
+    else if ((b = g('rqty'))) { R.qty = b.dataset.rqty; R.unit = 't'; }
+    else if ((b = g('rdisp'))) { R.disposer = b.dataset.rdisp; R.typing = false; }
+    else if (g('rtype-disp')) { R.typing = true; R.disposer = ''; renderRec(); $('#recDisp')?.focus(); return; }
+    else if ((b = g('rdate'))) R.date = b.dataset.rdate === 'today' ? todayIso() : ymdShift(-1);
+    else return;
+    renderRec();
   });
+  $('#recSheet').addEventListener('input', (e) => {
+    if (!R) return;
+    if (e.target.id === 'recQty') { R.qty = e.target.value; document.querySelectorAll('#recBody [data-rqty]').forEach((x) => x.classList.toggle('on', x.dataset.rqty === R.qty && R.unit === 't')); recUpdate(); }
+    if (e.target.id === 'recDisp') { R.disposer = e.target.value.trim(); recUpdate(); }
+    if (e.target.id === 'recDate' && e.target.value) { R.date = e.target.value; renderRec(); }
+  });
+  $('#recForm').addEventListener('submit', (e) => {
+    e.preventDefault(); if (!R) return;
+    let q = recQtyT(); if (!(q > 0)) { $('#recQty')?.focus(); return; }
+    let kgNote = '';
+    if (R.unit === 't' && q >= 100) { kgNote = `（${q}kg として ${q / 1000}t で記録しました）`; q = q / 1000; }
+    q = Math.round(q * 1000) / 1000;
+    const c = state.cases.find((x) => x.id === R.caseId) || cur();
+    const m = newManifest(c, { type: R.type, qty: String(q), disposer: R.disposer, date: R.date || todayIso() });
+    manifestsOf(c).push(m);
+    recRemember({ type: R.type, disposer: R.disposer });
+    save(); renderAll();
+    try { navigator.vibrate && navigator.vibrate(18); } catch (_) { /* noop */ }
+    $('#recDoneText').innerHTML = `<b>${esc(caseName(c))}</b><br>${esc((WT[R.type] || {}).name || '')} ${q}t${dispOf(m) ? `・処分代 ¥${yen(dispOf(m))}` : ''}${kgNote ? `<br><span class="sub">${esc(kgNote)}</span>` : ''}`;
+    $('#recForm').hidden = true; $('#recDone').hidden = false;
+  });
+  $('#recAgain').addEventListener('click', () => { if (!R) return; R.qty = ''; $('#recDone').hidden = true; $('#recForm').hidden = false; renderRec(); setTimeout(() => $('#recQty')?.focus(), 50); });
+  $('#qwOpen').addEventListener('click', () => openRec(cur().id));
+
+  // ---------- 新しい現場（最低限だけ入れて始める） ----------
+  function openCaseSheet() {
+    $('#caseQuick').reset(); $('#cqStart').value = todayIso();
+    document.querySelectorAll('#cqStruct button').forEach((b) => b.classList.toggle('on', b.dataset.v === 'wood'));
+    $('#caseSheet').hidden = false; document.body.classList.add('sheet-open');
+    setTimeout(() => $('#cqName').focus(), 60);
+  }
+  const closeCaseSheet = () => { $('#caseSheet').hidden = true; document.body.classList.remove('sheet-open'); };
+  $('#caseSheet').addEventListener('click', (e) => {
+    if (e.target.id === 'caseSheet' || e.target.closest('[data-close]')) { closeCaseSheet(); return; }
+    const b = e.target.closest('#cqStruct button'); if (b) document.querySelectorAll('#cqStruct button').forEach((x) => x.classList.toggle('on', x === b));
+  });
+  $('#caseQuick').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const c = newCase();
+    Object.assign(c, {
+      clientName: $('#cqName').value.trim().replace(/様邸$|様$/, ''), siteAddress: $('#cqAddr').value.trim(),
+      structure: (document.querySelector('#cqStruct button.on') || {}).dataset?.v || 'wood',
+      floorArea: $('#cqArea').value, startDate: $('#cqStart').value, endDate: $('#cqEnd').value,
+    });
+    state.cases.unshift(c); state.currentId = c.id; save(); fillForm(caseForm, c); renderAll();
+    closeCaseSheet(); openCase(c.id, 'waste');
+    toast(`「${caseName(c)}」を作りました`);
+  });
+
+  // ---------- 少ない選択肢は「押すだけ」のボタンにする ----------
+  const CHOICE_SELECTS = ['#caseForm select[name=structure]', '#expCat'];
+  function syncChoices() {
+    CHOICE_SELECTS.forEach((q) => {
+      const sel = document.querySelector(q); if (!sel || !sel.options.length) return;
+      let box = sel.nextElementSibling;
+      if (!box || !box.classList.contains('choice')) { box = document.createElement('div'); box.className = 'choice for-select'; sel.after(box); sel.classList.add('sr-only'); sel.tabIndex = -1;
+        box.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; sel.value = b.dataset.v; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); syncChoices(); }); }
+      box.innerHTML = [...sel.options].map((o) => `<button type="button" class="cbtn ${o.value === sel.value ? 'on' : ''}" data-v="${esc(o.value)}">${esc(o.textContent.replace(/（.*?）/, ''))}</button>`).join('');
+    });
+  }
   // 捨てた記録の一覧（この現場・新しい順）
   function renderWasteLog() {
     const c = cur();

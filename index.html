@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>カイタイ事務 — 解体工事の見積・届出 自動作成</title>
 <meta name="theme-color" content="#f2f0eb">
+<meta name="description" content="解体工事の処分・お金・書類をスマホひとつで。">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="カイタイ事務">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
@@ -43,7 +51,16 @@
 
 <div id="loginOverlay" class="login" hidden>
   <form id="loginForm" class="login-card">
-    <h1>カイタイ事務</h1>
+    <div class="login-hero">
+      <div class="login-logo"><img src="icons/icon-192.png" alt="" width="56" height="56"></div>
+      <h1>カイタイ事務</h1>
+      <p class="tagline">解体の事務を、スマホひとつで。</p>
+      <ul class="points">
+        <li><b>LINEで送るだけ</b>で処分を記録</li>
+        <li>見積書・届出・挨拶文が<b>自動でPDF</b></li>
+        <li>現場ごとの<b>利益と処分代</b>がすぐ分かる</li>
+      </ul>
+    </div>
     <p class="hint"><b id="loginTitle">ログイン</b>：メールアドレスとパスワードを入れてください。</p>
     <p id="inviteNote" class="invite-note" hidden>会社への招待を受け取りました。登録（またはログイン）すると、その会社に参加します。</p>
     <label for="loginEmail">メールアドレス<input id="loginEmail" type="email" autocomplete="username" required></label>
@@ -73,12 +90,33 @@
 </div>
 
 <div id="toast" class="toast" role="status" hidden></div>
-<div id="pickCase" class="sheet-back" hidden>
-  <div class="sheet" role="dialog" aria-label="どの現場の記録ですか">
-    <div class="sheet-title">どの現場の記録ですか？</div>
-    <ul id="pickCaseList" class="plist"></ul>
-    <button type="button" class="btn ghost big" id="pickCaseClose">やめる</button>
+<!-- 捨てた記録（押すだけで入力） -->
+<div id="recSheet" class="sheet-back" hidden>
+  <form id="recForm" class="sheet rec" role="dialog" aria-label="捨てた記録" novalidate>
+    <div class="sheet-head"><div class="sheet-title">捨てた記録</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="recBody"></div>
+    <div class="sheet-foot"><div id="recPreview" class="rec-preview"></div><button class="btn go big" type="submit" id="recSubmit">記録する</button></div>
+  </form>
+  <div id="recDone" class="sheet done-sheet" hidden>
+    <div class="done-mark"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div>
+    <div class="done-title">記録しました</div>
+    <p id="recDoneText" class="done-text"></p>
+    <div class="done-btns"><button type="button" class="btn go big" id="recAgain">続けて記録する</button><button type="button" class="btn ghost big" data-close>閉じる</button></div>
   </div>
+</div>
+<!-- 新しい現場（最低限だけ） -->
+<div id="caseSheet" class="sheet-back" hidden>
+  <form id="caseQuick" class="sheet" role="dialog" aria-label="新しい現場" novalidate>
+    <div class="sheet-head"><div class="sheet-title">新しい現場</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <p class="hint">ここだけ入れれば始められます。ほかの情報は、あとから「情報」でいつでも入れられます。</p>
+    <label>施主のお名前<span class="suffix-wrap"><input id="cqName" autocomplete="off" placeholder="例 山田"><span class="suffix">様邸</span></span></label>
+    <label>現場の住所<input id="cqAddr" autocomplete="off" placeholder="例 大阪市住吉区〇〇1-2-3"></label>
+    <div class="field"><div class="flabel">構造</div><div class="choice" id="cqStruct">
+      <button type="button" data-v="wood" class="on">木造</button><button type="button" data-v="steel">鉄骨造</button><button type="button" data-v="rc">RC造</button></div></div>
+    <label>延床面積（㎡）<input id="cqArea" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 99"><span class="sub">坪で分かるときは 坪×3.3 です（30坪 ≒ 99㎡）</span></label>
+    <div class="two-col"><label>着工日<input id="cqStart" type="date"></label><label>完了予定<input id="cqEnd" type="date"></label></div>
+    <button class="btn go big" type="submit">この現場を作る</button>
+  </form>
 </div>
 <main>
   <div id="siteHead" class="sitehead no-print" hidden></div>
@@ -164,17 +202,7 @@
   <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><button class="btn pdf" data-doc="工程表">PDFで保存・送る</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
   <section id="tab-manifest" class="tab no-print">
     <div id="dispTop"></div>
-    <button type="button" class="btn big" id="qwOpen">＋ 捨てた記録をつける</button>
-    <form id="quickWaste" class="quick card" hidden>
-      <div class="quick-title">捨てた記録をつける <span class="hint">（<b id="quickCase"></b>）</span></div>
-      <div class="quick-row">
-        <label for="qwType">ゴミ<select id="qwType"></select></label>
-        <label for="qwQty">重さ（t）<input id="qwQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 3"></label>
-        <label for="qwSite">処分場<input id="qwSite" list="disposerList" placeholder="例 ヒラヤマ"></label>
-        <label for="qwDate">日付<input id="qwDate" type="date"></label>
-      </div>
-      <div class="quick-btns"><button class="btn big" type="submit">記録する</button><button class="btn ghost" type="button" id="qwCancel">やめる</button></div>
-    </form>
+    <button type="button" class="btn go big" id="qwOpen">＋ 捨てた記録をつける</button>
     <p class="sec-label">記録（新しい順）</p>
     <ul id="wasteLog" class="rows"></ul>
     <div id="manifestAlerts"></div>
@@ -357,6 +385,14 @@
         <label>目標粗利率（％）<input name="targetMargin" type="number"></label>
       </fieldset>
     </form>
+    <fieldset>
+      <legend>スマホのホーム画面に置く（アプリのように使う）</legend>
+      <ol class="steps">
+        <li><b>iPhone</b>：Safariでこのページを開き、下の共有ボタン（□に↑）→「ホーム画面に追加」</li>
+        <li><b>Android</b>：Chromeで開き、右上の︙ →「ホーム画面に追加」</li>
+      </ol>
+      <p class="hint">ホーム画面のアイコンから開くと、アプリと同じように全画面で使えます。</p>
+    </fieldset>
     <p class="hint">単価は初期値として一般的な相場の目安を入れています。必ず自社の単価に書き換えてください。</p>
     <p><button id="exportBtn" class="btn ghost">データを書き出し（バックアップ）</button>
        <label class="btn ghost">データを読み込み<input id="importFile" type="file" accept="application/json" hidden></label></p>
