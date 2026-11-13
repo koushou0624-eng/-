@@ -1533,6 +1533,12 @@
     if (saved && saved.lastTab) Object.assign(lastTab, saved.lastTab);
     setSection(saved && SECTIONS[saved.sec] ? saved.sec : 'home');
     foldSettings(); labelTables(document);
+    // オープニング動画の設定（この端末だけ）
+    if (window.KJIntro && $('#introOn')) {
+      $('#introOn').checked = !KJIntro.isOff();
+      $('#introOn').addEventListener('change', (e) => { KJIntro.setOff(!e.target.checked); toast(e.target.checked ? '次に開いたときから流れます（1日1回）' : 'オープニング動画を止めました'); });
+      $('#introPlay').addEventListener('click', () => KJIntro.play());
+    }
     window.KJNav = { go, openCase, setSection }; // テスト・他の部品から画面を開くため
   })();
 

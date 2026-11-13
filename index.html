@@ -19,6 +19,15 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- オープニング動画 -->
+<div id="intro" class="intro no-print" hidden>
+  <video data-src="intro/yard.mp4" class="wide" muted playsinline webkit-playsinline preload="auto"></video>
+  <video data-src="intro/logo.mp4" class="fit" muted playsinline webkit-playsinline preload="metadata"></video>
+  <button type="button" class="intro-tap" hidden aria-label="再生"><span></span></button>
+  <button type="button" class="intro-sound" aria-label="音を出す"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="w" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/><path class="m" d="M16 9l6 6M22 9l-6 6"/></svg></button>
+  <button type="button" class="intro-skip">スキップ<span aria-hidden="true">›</span></button>
+</div>
+<script src="intro.js"></script>
 <header class="topbar no-print">
   <div class="brand">カイタイ事務 <span class="tag">試作版</span> <span id="syncStatus" class="sync" hidden></span></div>
   <div class="case-switch">
@@ -385,6 +394,11 @@
         <label>目標粗利率（％）<input name="targetMargin" type="number"></label>
       </fieldset>
     </form>
+    <fieldset>
+      <legend>オープニング動画</legend>
+      <label class="check"><input type="checkbox" id="introOn"> アプリを開いたときに動画を流す（1日1回）</label>
+      <button type="button" class="btn ghost" id="introPlay">今すぐ見る</button>
+    </fieldset>
     <fieldset>
       <legend>スマホのホーム画面に置く（アプリのように使う）</legend>
       <ol class="steps">
