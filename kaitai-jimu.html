@@ -765,6 +765,11 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
 .in-title { font-size: 16px; margin: 18px 0 8px; }
 .mcard.incoming { border-style: dashed; }
 
+/* 消した現場・バックアップ */
+#trashBox .tr-top .btn, #backupBox .tr-top .btn { flex: none; }
+.danger-t { color: var(--bad); }
+#backupBox .tr-top { flex-wrap: wrap; }
+
 .case-switch select{color:#1d232b;background:#fff}
 .paper th{color:#000}
 .disclaimer{background:var(--soft);color:var(--muted);font-size:13px;padding:8px 12px;border-radius:6px;margin:0 0 12px}
@@ -2070,7 +2075,8 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
       <tfoot><tr><th colspan="3">${(l.moves || []).length ? 'この機械の合計（全部の現場' : 'この現場の合計（'}${(l.moves || []).length ? '・' : ''}${r.ongoing ? '今日まで' : '返却まで'}）</th><td class="num"><b>¥${yen(r.cost)}</b></td><td></td></tr></tfoot></table></div>`;
   }
   // 現場の完了予定日まで借り続けた場合の見込み
-  function leaseForecastHtml(l, r, c) {
+  function leaseForecastHtml(l, r, c0) {
+    const iv = siteIntervals(l, ownerOf(l) || c0), at = iv.length ? state.cases.find((x) => x.id === iv[iv.length - 1].caseId) : null, c = at || c0;
     if (!r.ongoing || !c.endDate || c.endDate <= todayIso()) return '';
     const f = leaseCalc(l, c.endDate);
     const future = f.segs.filter((g) => g.to > today());
@@ -2078,7 +2084,7 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
     let advice = '';
     if (!lastSeg.monthly && lastSeg.len > num(l.th)) advice = `最後の${lastSeg.label}は${lastSeg.d}日なので日割り（${num(l.th)}日以内に返せば日割りのまま）。`;
     else if (lastSeg.monthly) advice = `最後の${lastSeg.label}は${lastSeg.d}日使うので月極になります。`;
-    return `<div class="forecast">🔮 <b>完了予定日（${fmtIso(c.endDate)}）まで借りた場合：合計 ¥${yen(f.cost)}</b>（今日から あと¥${yen(f.cost - r.cost)}）
+    return `<div class="forecast">🔮 <b>${c !== c0 ? `今いる${esc(caseName(c))}の` : ''}完了予定日（${fmtIso(c.endDate)}）まで借りた場合：合計 ¥${yen(f.cost)}</b>（今日から あと¥${yen(f.cost - r.cost)}）
       <div class="sub">${future.map((g) => `${g.label}：${g.d}日 ${g.monthly ? '月極' : '日割り'} ¥${yen(g.amount)}`).join('　')}</div>
       ${advice ? `<div class="sub">${advice}</div>` : ''}</div>`;
   }
@@ -3171,11 +3177,10 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
     const c = newCase(); state.cases.unshift(c); state.currentId = c.id; save(); fillForm(caseForm, c); renderAll();
     $('#tabs button[data-tab=input]').click();
   });
-  let delArmed = null;
-  $('#deleteCase').addEventListener('click', (ev) => {
-    const btn = ev.currentTarget;
-    if (!delArmed) { btn.textContent = 'もう一度押すと削除'; delArmed = setTimeout(() => { btn.textContent = '削除'; delArmed = null; }, 3000); return; }
-    clearTimeout(delArmed); delArmed = null; btn.textContent = '削除';
+  $('#deleteCase').addEventListener('click', () => {
+    if (!confirm('この現場を削除しますか？\n（30日間は、設定の「消した現場・バックアップ」から戻せます）')) return;
+    const gone = state.cases.find((c) => c.id === state.currentId);
+    if (gone) trashAdd(gone);
     state.cases = state.cases.filter((c) => c.id !== state.currentId);
     if (!state.cases.length) state.cases.push(newCase());
     state.currentId = state.cases[0].id; save(); fillForm(caseForm, cur()); renderAll();
@@ -3189,7 +3194,53 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
     save(); fillForm(caseForm, c); renderAll();
   });
 
-  fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll();
+  // ---------- 消した現場（30日間戻せる）・バックアップ ----------
+  const TRASH_KEY = 'kaitai-jimu-trash', KEEP_DAYS = 30;
+  const trashRead = () => { try { return (JSON.parse(localStorage.getItem(TRASH_KEY)) || []).filter((x) => x && x.data && Date.now() - new Date(x.at).getTime() < KEEP_DAYS * 864e5); } catch (_) { return []; } };
+  const trashWrite = (list) => { try { localStorage.setItem(TRASH_KEY, JSON.stringify(list)); } catch (_) { /* noop */ } };
+  function trashAdd(c) { trashWrite([{ at: new Date().toISOString(), data: JSON.parse(JSON.stringify(c)) }].concat(trashRead().filter((x) => x.data.id !== c.id)).slice(0, 50)); }
+  let serverTrash = [], backups = null; // ログインしているときは、会社の分も（cloud.js が入れる）
+  function renderTrash() {
+    const map = new Map();
+    serverTrash.concat(trashRead()).forEach((x) => { if (!state.cases.some((c) => c.id === x.data.id)) map.set(x.data.id, x); });
+    const list = [...map.values()].sort((a, b) => (a.at < b.at ? 1 : -1));
+    const left = (at) => Math.max(0, KEEP_DAYS - Math.floor((Date.now() - new Date(at).getTime()) / 864e5));
+    $('#trashBox').innerHTML = `<div class="sec-label">消した現場（${KEEP_DAYS}日間は戻せます）</div>
+      ${list.length ? `<ul class="tlist">${list.map((x) => `<li class="trow"><div class="tr-top"><span class="tr-name">${esc(caseName(x.data))}<small class="mut">　${esc(x.data.siteAddress || '')}</small></span>
+        <button type="button" class="btn small" data-restore="${esc(x.data.id)}">戻す</button></div>
+        <div class="tr-bot"><span class="legal">${md(isoOf(new Date(x.at)))}に削除・あと${left(x.at)}日で完全に消えます</span></div></li>`).join('')}</ul>` : '<p class="hint">消した現場はありません。</p>'}`;
+    $('#backupBox').innerHTML = backups === null ? '<p class="hint">ログインして使うと、毎日3時に会社のデータが自動でバックアップされます（30日分）。</p>'
+      : `<div class="sec-label">自動バックアップ（毎日3時・30日分）</div>
+        ${backups.length ? `<ul class="tlist">${backups.map((b) => `<li class="trow"><div class="tr-top"><span class="tr-name">${esc(b.day.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日'))}の3時<small class="mut">　現場 ${b.n}件</small></span>
+          <button type="button" class="btn ghost small" data-bkdl="${b.day}">書き出す</button><button type="button" class="btn ghost small danger-t" data-bkrestore="${b.day}">この日に戻す</button></div></li>`).join('')}</ul>` : '<p class="hint">まだバックアップはありません（今夜3時に最初のバックアップを取ります）。</p>'}`;
+    return list;
+  }
+  $('#trashFs').addEventListener('click', async (e) => {
+    const r = e.target.closest('[data-restore]');
+    if (r) {
+      const x = [...serverTrash, ...trashRead()].find((y) => y.data.id === r.dataset.restore); if (!x) return;
+      if (state.cases.some((c) => c.id === x.data.id)) return;
+      state.cases.unshift(JSON.parse(JSON.stringify(x.data))); trashWrite(trashRead().filter((y) => y.data.id !== x.data.id));
+      serverTrash = serverTrash.filter((y) => y.data.id !== x.data.id);
+      save(); renderAll(); toast(`「${caseName(x.data)}」を戻しました`); return;
+    }
+    const dl = e.target.closest('[data-bkdl]'), rs = e.target.closest('[data-bkrestore]');
+    if ((dl || rs) && window.KJCloud && KJCloud.backup) {
+      const day = (dl || rs).dataset.bkdl || (dl || rs).dataset.bkrestore;
+      const d = await KJCloud.backup(day); if (!d) { toast('バックアップを読めませんでした'); return; }
+      if (dl) {
+        const blob = new Blob([JSON.stringify({ settings: d.settings, cases: d.cases }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kaitai-jimu-backup-${day}.json`; a.click(); return;
+      }
+      if (!confirm(`${day.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日')}の3時の状態に戻しますか？\n会社のみんなのデータが、その時の内容に戻ります（今の状態は、念のため先にファイルで書き出します）。`)) return;
+      $('#exportBtn').click();
+      state = { settings: normalizeSettings({ ...DEFAULT_SETTINGS, ...(d.settings || {}) }), cases: d.cases && d.cases.length ? d.cases : [newCase()], currentId: (d.cases[0] || {}).id };
+      save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll(); toast('バックアップの状態に戻しました');
+    }
+  });
+  window.KJTrash = { setServer: (items, bk) => { serverTrash = items || []; backups = bk === undefined ? backups : bk; renderTrash(); }, render: renderTrash };
+
+  fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll(); renderTrash();
 
   (function startNav() {
     let saved = null;

@@ -52,7 +52,7 @@
       Object.keys(meta.synced).forEach((k) => {
         if (docs[k]) return;
         const i = k.indexOf(':');
-        rows.push({ k, del: true, row: { company_id: company.id, kind: k.slice(0, i), id: k.slice(i + 1), data: {}, deleted: true } });
+        rows.push({ k, del: true, row: { company_id: company.id, kind: k.slice(0, i), id: k.slice(i + 1), data: parseJ(meta.synced[k]) || {}, deleted: true } });
       });
       // 送る前に：送ろうとしている現場・設定を、ほかの人（LINE も）が変えていないか確かめ、変えていたら合わせる
       const want = rows.filter((r) => !r.del);
@@ -239,6 +239,7 @@
       renderCompanyBox(list);
       renderLineIn();
       await pull({ initial: !meta.lastPull });
+      loadTrash();
       if (migrated) await push(); // 引っ越し中に送れなかった入力があれば送る
     } catch (e) {
       console.warn('company failed', e);
@@ -449,7 +450,28 @@
   });
 
   // ---------- きっかけ ----------
-  window.KJCloud = { onLocalSave: () => { if (user) schedulePush(); }, pull: () => pull(), push };
+  // 消した現場（会社の分・30日以内）と、自動バックアップの一覧
+  async function loadTrash() {
+    if (!user || !company || offlineMode || !window.KJTrash) return;
+    try {
+      const since = new Date(Date.now() - 30 * 864e5).toISOString();
+      const [t, b] = await Promise.all([
+        sb.from('kj_docs').select('id,data,updated_at').eq('company_id', company.id).eq('kind', 'case').eq('deleted', true).gte('updated_at', since).order('updated_at', { ascending: false }),
+        sb.rpc('kj_backup_list', { p_company: company.id }),
+      ]);
+      if (t.error) throw t.error;
+      const items = (t.data || []).filter((r) => r.data && r.data.id).map((r) => ({ at: r.updated_at, data: r.data }));
+      const bk = b.error ? [] : (b.data || []).map((r) => ({ day: r.day, n: r.n }));
+      KJTrash.setServer(items, bk);
+    } catch (e) { console.warn('trash failed', e); }
+  }
+  async function backup(day) {
+    if (!user || !company) return null;
+    const { data, error } = await sb.from('kj_backups').select('data').eq('company_id', company.id).eq('day', day).maybeSingle();
+    return error || !data ? null : data.data;
+  }
+  window.KJCloud = { onLocalSave: () => { if (user) schedulePush(); }, pull: () => pull(), push, loadTrash, backup };
+  document.addEventListener('click', (e) => { if (e.target.closest('#trashFs > legend') || e.target.closest('#mainNav [data-sec=settings]')) setTimeout(loadTrash, 100); });
   const typing = () => { const a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); else if (user) push(); });
   window.addEventListener('focus', () => pull());
