@@ -16,7 +16,7 @@
     cLabor: 18000, cWorkers: 3, cMove: 35000, cMachine: 10000, cTruckLoad: 4, cTruck: 15000,
     cDispDebris: 8000,
     // 処分単価（円/t、アスベストは円/㎥）。相場の目安
-    dispPrices: { wood: 12000, concrete: 3000, concreteR: 4500, mixed: 25000, plastic: 35000, glass: 10000, gypsum: 20000, asphalt: 3000, metal: 5000, asb: 30000, asbsp: 80000 },
+    dispPrices: { wood: 12, concrete: 3000, concreteR: 4500, mixed: 25000, plastic: 35000, glass: 10000, gypsum: 20000, asphalt: 3000, metal: 5000, asb: 30000, asbsp: 80000 },
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
     defCarrier: '', defDisposer: '',
     // リースの機械：日額・月極・この日数を超えたら月極・回送費（往復）。相場の目安
@@ -30,7 +30,7 @@
     sites: [], // 処分場ごとの単価 { id, name, prices: { 種類: 円 } }
     leaseMode: 'calendar', // 月極の区切り：calendar=リース会社の締め日ごと / anniv=借りた日から1か月 / days30=30日ごと
     leaseCompanies: [], // リース会社と締め日 { id, name, close: 1〜28 または '末' }
-    alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2,
+    alwaysTypes: ['wood', 'concrete', 'concreteR', 'mixed', 'plastic', 'glass', 'gypsum'], wasteVer: 2, customTypes: [], priceUnits: { wood: 'kg', gypsum: '㎥' }, unitVer: 1,
   };
   // マニフェストの廃棄物の種類（sp: 特別管理産業廃棄物 → B2・D票の期限が60日）
   const { WASTE_TYPES, WT } = KJCore;
@@ -65,6 +65,14 @@
     if (old.cDispWood != null) legacy.wood = old.cDispWood;
     if (old.cDispMixed != null) legacy.mixed = old.cDispMixed;
     s.dispPrices = { ...DEFAULT_SETTINGS.dispPrices, ...(old.dispPrices ? {} : legacy), ...(old.dispPrices || {}) };
+    // 単価の単位（円/t・円/kg・円/㎥）：芝はkg、石膏ボードは㎥に。円/tで入っていた芝の単価はkgに直す
+    if (!old.unitVer) {
+      s.priceUnits = { ...DEFAULT_SETTINGS.priceUnits, ...(old.priceUnits || {}) };
+      const toKg = (v) => (v !== '' && v != null && num(v) >= 1000 ? String(num(v) / 1000) : v);
+      s.dispPrices = { ...s.dispPrices, wood: toKg(s.dispPrices.wood) };
+      s.sites = (s.sites || []).map((st) => (st.prices && !(st.units || {}).wood ? { ...st, prices: { ...st.prices, wood: toKg(st.prices.wood) } } : st));
+      s.unitVer = 1;
+    }
     return s;
   }
   function load() {
@@ -409,19 +417,33 @@
   const siteByName = (name) => (state.settings.sites || []).find((x) => x.name && x.name.trim() === String(name || '').trim());
   const sitePrice = (site, type) => { const v = site && site.prices ? site.prices[type] : ''; return v === '' || v == null ? null : num(v); };
   // 単価の出どころ（手入力していないとき）
+  const stdUnitOf = (type) => (state.settings.priceUnits || {})[type] || ((WT[type] || {}).unit === '㎥' ? '㎥' : 't');
+  const siteUnitOf = (site, type) => (site && (site.units || {})[type]) || stdUnitOf(type);
   function defaultPriceOf(m) {
     const site = siteByName(m.disposer), sp = sitePrice(site, m.type);
-    return sp != null ? { price: sp, label: `${site.name}の単価` } : { price: dispPrice(m.type), label: '標準' };
+    return sp != null ? { price: sp, unit: siteUnitOf(site, m.type), label: `${site.name}の単価` } : { price: dispPrice(m.type), unit: stdUnitOf(m.type), label: '標準' };
   }
   const unitPriceOf = (m) => (m.price !== '' && m.price != null ? num(m.price) : defaultPriceOf(m).price);
+  // 数量の単位（記録は t か ㎥）と、単価の単位（円/t・円/kg・円/㎥）
+  const qUnitOf = (m) => (m.unit === '㎥' || m.unit === 't' ? m.unit : ((WT[m.type] || {}).unit === '㎥' ? '㎥' : 't'));
+  const pUnitOf = (m) => defaultPriceOf(m).unit;
+  const costOf = KJCore.costOf;
+  const unitMismatch = (m) => num(m.qty) > 0 && costOf(1, qUnitOf(m), 1, pUnitOf(m)) == null;
+  const qtyText = (m) => { const q = num(m.qty); if (qUnitOf(m) === '㎥') return `${+q.toFixed(3)}㎥`; return pUnitOf(m) === 'kg' ? `${Math.round(q * 1000).toLocaleString('ja-JP')}kg` : `${+q.toFixed(3)}t`; };
+  // 単価を比べるときは t あたりにそろえる（㎥ は ㎥ どうしだけ）
+  const perBase = (p, u) => (u === 'kg' ? p * 1000 : p);
   // その種類で一番安い処分場
   function cheapestSite(type) {
     let best = null;
-    (state.settings.sites || []).forEach((st) => { const p = sitePrice(st, type); if (p != null && st.name && (!best || p < best.price)) best = { name: st.name, price: p }; });
+    const isVol = stdUnitOf(type) === '㎥';
+    (state.settings.sites || []).forEach((st) => {
+      const p = sitePrice(st, type), u = siteUnitOf(st, type); if (p == null || !st.name || (u === '㎥') !== isVol) return;
+      if (!best || perBase(p, u) < perBase(best.price, best.unit)) best = { name: st.name, price: p, unit: u };
+    });
     return best;
   }
   // 重さの入れ間違い（kg を t に入れた）と思われる記録は、直すまで金額に入れない
-  const dispOf = (m) => (tooHeavy(m) ? 0 : num(m.qty) * unitPriceOf(m));
+  const dispOf = (m) => (tooHeavy(m) ? 0 : costOf(num(m.qty), qUnitOf(m), unitPriceOf(m), pUnitOf(m)) || 0);
   // マニフェストが入る請求（処分場の締め日。登録のない処分場は末日締め）
   function billOf(m) {
     const site = siteByName(m.disposer);
@@ -435,11 +457,12 @@
     return { ym: isoOf(end).slice(0, 7), from, to: end, close, label: `${end.getMonth() + 1}月分`, registered: !!site };
   }
   // 1回の搬出で100t以上はまずない → kg で入れた可能性が高い
-  const tooHeavy = (m) => (WT[m.type] || {}).unit !== '㎥' && num(m.qty) >= 100;
+  const tooHeavy = (m) => qUnitOf(m) !== '㎥' && num(m.qty) >= 100;
   const fixKgHtml = (m) => (tooHeavy(m) ? `<span class="chip late">⚠ ${m.qty}tは多すぎます</span><button type="button" class="btn small" data-fixkg="${m.id}">${Math.round(num(m.qty)) / 1000}tに直す（kgで入れた場合）</button>` : '');
   const mcostHtml = (m) => {
     if (!(num(m.qty) > 0)) return '';
     if (tooHeavy(m)) return fixKgHtml(m);
+    if (unitMismatch(m)) return `<span class="chip late">単価は「円/${pUnitOf(m)}」です。数量を${pUnitOf(m) === '㎥' ? '㎥（立米）' : '重さ（t）'}で入れてください</span>`;
     const b = billOf(m);
     return `${m.via === 'line' ? '<span class="chip line">LINEから</span> ' : ''}処分代 <b>¥${yen(dispOf(m))}</b>${b.ym ? `<span class="billtag">${b.label}の請求（${closeLabel(b.close)}締め）</span>` : ''}`;
   };
@@ -455,7 +478,7 @@
       const key = (x.m.disposer || '（処分業者 未入力）').trim();
       const g = bySite[key] || (bySite[key] = { b: x.b, n: 0, cost: 0, qty: {}, cases: {} });
       g.n++; g.cost += dispOf(x.m);
-      const u = WT[x.m.type]?.unit || 't'; g.qty[u] = (g.qty[u] || 0) + num(x.m.qty);
+      const u = qUnitOf(x.m); g.qty[u] = (g.qty[u] || 0) + num(x.m.qty);
       const cc = g.cases[x.c.id] || (g.cases[x.c.id] = { name: caseName(x.c), n: 0, cost: 0 }); cc.n++; cc.cost += dispOf(x.m);
     });
     const now = today();
@@ -474,21 +497,30 @@
   }
   function gsumHtml(c, type) {
     const w = WT[type], list = manifestsOf(c).filter((m) => m.type === type);
-    const total = list.reduce((a, m) => a + num(m.qty), 0), cost = list.reduce((a, m) => a + dispOf(m), 0), est = estimateFor(c, type);
+    const totalTxt = sumText(list), cost = list.reduce((a, m) => a + dispOf(m), 0), est = estimateFor(c, type);
     const open = list.filter((m) => manifestChecks(m).some((x) => x.state === 'late')).length;
     const best = cheapestSite(type);
-    return `${list.length}枚・合計 <b>${total ? total.toFixed(2) : '0'}${w.unit}</b>・処分代 <b>¥${yen(cost)}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${best ? `<br><span class="best">一番安い処分場：${esc(best.name)} ¥${yen(best.price)}/${w.unit}</span>` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}`;
+    return `${list.length}枚・合計 <b>${totalTxt}</b>・処分代 <b>¥${yen(cost)}</b>${est ? `（${estLabel(type)} ${est.toFixed(1)}t）` : ''}${best ? `<br><span class="best">一番安い処分場：${esc(best.name)} ¥${yen(best.price)}/${best.unit}</span>` : ''}${open ? `　<span class="chip late">期限超過 ${open}枚</span>` : ''}`;
+  }
+  // 数量の合計（t と ㎥ は分けて表示。単価がkgの種類はkgで表示）
+  function sumText(list) {
+    const t = list.filter((m) => qUnitOf(m) === 't').reduce((a, m) => a + num(m.qty), 0), v = list.filter((m) => qUnitOf(m) === '㎥').reduce((a, m) => a + num(m.qty), 0);
+    const kg = list.length && list.every((m) => qUnitOf(m) === '㎥' || pUnitOf(m) === 'kg');
+    const parts = [];
+    if (t) parts.push(kg ? `${Math.round(t * 1000).toLocaleString('ja-JP')}kg` : `${+t.toFixed(2)}t`);
+    if (v) parts.push(`${+v.toFixed(2)}㎥`);
+    return parts.join('＋') || '0';
   }
   function dispSummary(c) {
     const ms = manifestsOf(c).filter((m) => num(m.qty) > 0), by = {};
-    ms.forEach((m) => { const g = by[m.type] || (by[m.type] = { n: 0, qty: 0, cost: 0 }); g.n++; g.qty += num(m.qty); g.cost += dispOf(m); });
+    ms.forEach((m) => { const g = by[m.type] || (by[m.type] = { n: 0, qty: 0, cost: 0, list: [] }); g.n++; g.qty += num(m.qty); g.cost += dispOf(m); g.list.push(m); });
     return { by, total: Math.round(ms.reduce((a, m) => a + dispOf(m), 0)), count: ms.length };
   }
   function renderManifestCost(c) {
     const d = dispSummary(c);
     const rows = WASTE_TYPES.filter((w) => d.by[w.id]).map((w) => {
       const g = d.by[w.id];
-      return `<tr><td>${esc(w.name)}</td><td class="num">${g.n}</td><td class="num">${g.qty.toFixed(2)} ${w.unit}</td><td class="num">¥${yen(g.qty ? g.cost / g.qty : 0)}</td><td class="num">¥${yen(g.cost)}</td></tr>`;
+      return `<tr><td>${esc(w.name)}</td><td class="num">${g.n}</td><td class="num">${sumText(g.list)}</td><td class="num">${(() => { const u = pUnitOf(g.list[0]), q = g.list.reduce((a, m) => a + num(m.qty), 0) * (u === 'kg' ? 1000 : 1); return q ? '¥' + yen(g.cost / q) + '/' + u : '—'; })()}</td><td class="num">¥${yen(g.cost)}</td></tr>`;
     }).join('');
     $('#manifestCost').innerHTML = `
       <h2>処分代（ゴミの種類ごと）</h2>
@@ -506,8 +538,8 @@
           <label>種類<select data-f="kind"><option value="paper" ${m.kind !== 'electronic' ? 'selected' : ''}>紙</option><option value="electronic" ${m.kind === 'electronic' ? 'selected' : ''}>電子（JWNET）</option></select></label>
           <label>交付番号<input data-f="no" value="${esc(m.no)}" placeholder="例 1234567890"></label>
           <label>交付日（搬出日）<input data-f="date" type="date" value="${esc(m.date)}"></label>
-          <label>数量（${WT[m.type]?.unit || 't'}）<input data-f="qty" type="number" min="0" step="0.01" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"></label>
-          <label>処分単価（円/${WT[m.type]?.unit || 't'}）<input data-f="price" type="number" min="0" value="${esc(m.price ?? '')}" placeholder="${esc(defaultPriceOf(m).label)} ${yen(defaultPriceOf(m).price)}"></label>
+          <label>数量<span class="qty-unit"><input data-f="qty" type="number" min="0" step="0.001" inputmode="decimal" value="${esc(m.qty)}" placeholder="${esc(m.hint || '')}"><select data-f="unit" aria-label="数量の単位"><option value="t" ${qUnitOf(m) === 't' ? 'selected' : ''}>t</option><option value="㎥" ${qUnitOf(m) === '㎥' ? 'selected' : ''}>㎥</option></select></span></label>
+          <label>処分単価（円/${pUnitOf(m)}）<input data-f="price" type="number" min="0" value="${esc(m.price ?? '')}" placeholder="${esc(defaultPriceOf(m).label)} ${yen(defaultPriceOf(m).price)}"></label>
           <label>収集運搬業者<input data-f="carrier" list="carrierList" value="${esc(m.carrier)}"></label>
           <label>処分業者<input data-f="disposer" list="disposerList" value="${esc(m.disposer)}"></label>
           ${m.kind === 'electronic' ? `<label>JWNET登録日<input data-f="reg" type="date" value="${esc(m.reg)}"></label>` : ''}
@@ -525,7 +557,7 @@
       const w = WT[type], list = ms.filter((m) => m.type === type);
       const total = list.reduce((a, m) => a + num(m.qty), 0), est = estimateFor(c, type);
       const open = list.filter((m) => manifestChecks(m).some((x) => x.state === 'late')).length;
-      const tag = always.has(type) ? '' : type === 'asb' || type === 'asbsp' ? '<span class="tag2">アスベスト調査結果より</span>' : '<span class="tag2">追加したゴミ</span>';
+      const tag = always.has(type) ? '' : type === 'asb' || type === 'asbsp' ? '<span class="tag2">アスベスト調査結果より</span>' : WT[type] && WT[type].custom ? '<span class="tag2">自分で足した種類</span>' : '<span class="tag2">追加したゴミ</span>';
       return `
       <section class="mgroup" data-type="${type}">
         <div class="ghead">
@@ -561,7 +593,7 @@
   // 見込み（見積時）と実績（マニフェスト）の比較
   function renderManifestCompare(c) {
     const w = wasteOf(c), ms = manifestsOf(c);
-    const act = (ids) => ms.filter((m) => ids.includes(m.type) && (WT[m.type]?.unit === 't')).reduce((a, m) => a + num(m.qty), 0);
+    const act = (ids) => ms.filter((m) => ids.includes(m.type) && qUnitOf(m) === 't').reduce((a, m) => a + num(m.qty), 0);
     const rows = [
       ['コンクリートガラ（無筋＋有筋）', w.concrete, act(['concrete', 'concreteR'])],
       ['アスファルトガラ', w.asphalt, act(['asphalt'])],
@@ -595,7 +627,7 @@
     const groups = {};
     all.filter(({ m }) => fiscalYearOf(m.date) === fy).forEach(({ c, m }) => {
       const key = [prefOf(c.siteAddress), WT[m.type]?.legal || m.type, m.carrier || '（未入力）', m.disposer || '（未入力）'].join('\u0001');
-      const g = groups[key] || (groups[key] = { n: 0, qty: 0, unit: WT[m.type]?.unit || 't' });
+      const g = groups[key] || (groups[key] = { n: 0, qty: 0, unit: qUnitOf(m) });
       g.n++; g.qty += num(m.qty);
     });
     const keys = Object.keys(groups).sort();
@@ -615,7 +647,7 @@
   function renderDispTop(c) {
     const box = $('#dispTop'); if (!box) return;
     if (dispView === 'simple') {
-      const d = dispSummary(c), tt = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+      const d = dispSummary(c), tt = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0);
       box.innerHTML = `<div class="total-card"><div><div class="lab">この現場の処分</div><div class="big">${Math.round(tt * 100) / 100}t</div></div><div class="r"><div class="lab">処分代</div><div class="big">¥${yen(d.total)}</div></div></div>
         <button type="button" class="link more" data-dview="case">種類ごと・今月の全現場を見る ›</button>`;
       return;
@@ -625,7 +657,7 @@
       const ym = todayIso().slice(0, 7);
       const rows = state.cases.map((x) => {
         const ms = manifestsOf(x).filter((m) => num(m.qty) > 0 && String(m.date || '').slice(0, 7) === ym);
-        const t = ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+        const t = ms.filter((m) => qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0);
         return { x, n: ms.length, t, cost: ms.reduce((a, m) => a + dispOf(m), 0) };
       }).filter((r) => r.n).sort((a, b) => b.cost - a.cost);
       const tt = rows.reduce((a, r) => a + r.t, 0), tc = rows.reduce((a, r) => a + r.cost, 0), tn = rows.reduce((a, r) => a + r.n, 0);
@@ -638,7 +670,7 @@
       return;
     }
     const d = dispSummary(c), list = manifestsOf(c).filter((m) => num(m.qty) > 0);
-    const tt = list.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+    const tt = list.filter((m) => qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0);
     const types = WASTE_TYPES.filter((w) => d.by[w.id]); // 捨てた種類だけ
     // 見込みは「コンクリートガラ」が無筋・有筋の合計なので、見込みとの比較はまとめて行う
     const est = (id) => (id === 'concreteR' ? 0 : estimateFor(c, id) || 0);
@@ -925,6 +957,8 @@
   window.KJOpenSetting = (id) => { const fs = document.getElementById(id); if (fs) fs.classList.remove('closed'); return fs; };
 
   function renderAll() {
+    KJCore.setCustomTypes(state.settings.customTypes);
+    const te = $('#typeEditor'); const ae = document.activeElement; if (te && !te.dataset.keep && !(te.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox')) renderTypeEditor();
     const c = cur(), s = state.settings;
     renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); renderSummary(c); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
@@ -1010,7 +1044,9 @@
 
   // ---------- ホーム：現場の一覧 ----------
   const WCOLOR = { wood: '#b07a3c', concrete: '#7a8794', concreteR: '#556270', mixed: '#c2410c', plastic: '#2f80ed', glass: '#8e6bbf', gypsum: '#9aa5b1', asphalt: '#3b3b3b', metal: '#4b7f52', asb: '#e03131', asbsp: '#e03131' };
-  const wchip = (type) => `<span class="wchip" style="--wc:${WCOLOR[type] || '#888'}">${esc((WT[type] || {}).name || type)}</span>`;
+  const CUSTOM_COLORS = ['#2b8a7e', '#7a5af5', '#c2255c', '#5c7cfa', '#e8590c', '#2f9e44'];
+  const colorOf = (type) => WCOLOR[type] || (WT[type] && WT[type].custom ? CUSTOM_COLORS[Math.abs([...type].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % CUSTOM_COLORS.length] : '#888');
+  const wchip = (type) => `<span class="wchip" style="--wc:${colorOf(type)}">${esc((WT[type] || {}).name || type)}</span>`;
   const md = (iso) => (iso ? iso.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2') : '');
   function caseStatus(c) {
     const t = todayIso();
@@ -1024,7 +1060,7 @@
   }
   const monthDisp = (c, ym) => {
     const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && String(m.date || '').slice(0, 7) === ym);
-    return { t: ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0), cost: ms.reduce((a, m) => a + dispOf(m), 0), n: ms.length };
+    return { t: ms.filter((m) => qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0), cost: ms.reduce((a, m) => a + dispOf(m), 0), n: ms.length };
   };
   const tTxt = (t) => `${Math.round(t * 10) / 10}t`;
   let alertsOpen = false;
@@ -1084,7 +1120,7 @@
       .sort((x, y) => String(y.m.lineAt || y.m.date).localeCompare(String(x.m.lineAt || x.m.date)));
     $('#lineLogOut').innerHTML = `<h1 class="h-date">LINEの記録</h1>
       <p class="h-sub">公式LINEに送られた記録です（全部の現場）。押すとその現場が開きます。</p>
-      <ul class="rows">${list.map(({ c, m }) => `<li><button type="button" class="row" data-open="${c.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${esc(m.qty)}${(WT[m.type] || {}).unit || 't'}</span><span class="r-sub">${md(m.date)}・${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}・${esc(m.disposer || '処分場未入力')}</span></span><span class="r-num"><b>¥${yen(dispOf(m))}</b></span></button></li>`).join('')
+      <ul class="rows">${list.map(({ c, m }) => `<li><button type="button" class="row" data-open="${c.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${qtyText(m)}</span><span class="r-sub">${md(m.date)}・${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}・${esc(m.disposer || '処分場未入力')}</span></span><span class="r-num"><b>¥${yen(dispOf(m))}</b></span></button></li>`).join('')
         || '<li class="empty-row">まだありません。運転手さんが公式LINEに「ヒラヤマ 伏見 シバ 3t」のように送ると、ここに入ります。</li>'}</ul>
       <button type="button" class="btn ghost wide" data-tolink>LINEの連携・運転手さんの追加 ›</button>`;
   }
@@ -1115,17 +1151,21 @@
     if (state.settings.defDisposer && !out.includes(state.settings.defDisposer)) out.push(state.settings.defDisposer);
     return out.slice(0, 8);
   }
-  function recQtys(type) {
-    const out = [];
-    allMs().slice().reverse().forEach((m) => { const q = num(m.qty); if (m.type === type && q > 0 && q < 100 && !out.includes(q)) out.push(q); });
-    [2, 3, 4, 1].forEach((q) => { if (out.length < 4 && !out.includes(q)) out.push(q); });
+  function recQtys(type, unit) {
+    const out = [], vol = unit === '㎥';
+    allMs().slice().reverse().forEach((m) => {
+      if (m.type !== type || (qUnitOf(m) === '㎥') !== vol) return;
+      let q = num(m.qty); if (!(q > 0) || (!vol && q >= 100)) return;
+      if (unit === 'kg') q = Math.round(q * 1000); if (!out.includes(q)) out.push(q);
+    });
+    (unit === 'kg' ? [100, 200, 300, 500] : [2, 3, 4, 1]).forEach((q) => { if (out.length < 4 && !out.includes(q)) out.push(q); });
     return out.slice(0, 4).sort((a, b) => a - b);
   }
   function openRec(caseId) {
     const mem = recMem(), types = recTypes();
     const type = (mem.type && WT[mem.type]) ? mem.type : types.main[0] || 'concrete';
     const disp = recDisposers();
-    R = { caseId: caseId || cur().id, type, qty: '', unit: 't', disposer: mem.disposer && disp.includes(mem.disposer) ? mem.disposer : (disp[0] || ''), date: todayIso(), more: false, typing: false };
+    R = { caseId: caseId || cur().id, type, qty: '', unit: 't', unitAuto: true, disposer: mem.disposer && disp.includes(mem.disposer) ? mem.disposer : (disp[0] || ''), date: todayIso(), more: false, typing: false };
     $('#recForm').hidden = false; $('#recDone').hidden = true; $('#recSheet').hidden = false;
     document.body.classList.add('sheet-open');
     renderRec();
@@ -1139,18 +1179,22 @@
     if (!list.some((c) => c.id === R.caseId)) list.unshift(state.cases.find((c) => c.id === R.caseId) || cur());
     const t = recTypes(), types = R.more ? [...t.main, ...t.rest] : t.main;
     const disp = recDisposers();
-    const qtys = recQtys(R.type);
+    // 単位：その種類（処分場）の単価が kg なら kg、㎥ なら ㎥ で入れる
+    const pu = defaultPriceOf({ type: R.type, disposer: R.disposer }).unit;
+    const units = pu === '㎥' ? ['㎥'] : ['t', 'kg'];
+    if (R.unitAuto || !units.includes(R.unit)) R.unit = pu === '㎥' ? '㎥' : pu === 'kg' ? 'kg' : 't';
+    const qtys = recQtys(R.type, R.unit);
     const dateIs = R.date === todayIso() ? 'today' : R.date === ymdShift(-1) ? 'yday' : 'other';
     $('#recBody').innerHTML = `
       <div class="field"><div class="flabel"><i>1</i>どの現場？</div>
         <div class="choice scroll">${list.map((c) => chipBtn('rcase', c.id, esc(caseName(c)), c.id === R.caseId)).join('')}</div></div>
       <div class="field"><div class="flabel"><i>2</i>なにを捨てた？</div>
-        <div class="choice types">${types.map((id) => chipBtn('rtype', id, `<span class="sw" style="--wc:${WCOLOR[id] || '#888'}"></span>${esc(WT[id].name)}`, id === R.type)).join('')}
+        <div class="choice types">${types.map((id) => chipBtn('rtype', id, `<span class="sw" style="--wc:${colorOf(id)}"></span>${esc(WT[id].name)}`, id === R.type)).join('')}
         ${t.rest.length ? `<button type="button" class="cbtn more" data-rmore>${R.more ? '少なく表示' : '＋ ほかの種類'}</button>` : ''}</div></div>
-      <div class="field"><div class="flabel"><i>3</i>重さは？</div>
-        <div class="qty-row"><input id="recQty" class="qty-in" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${esc(R.qty)}" aria-label="重さ">
-          <div class="unit">${['t', 'kg'].map((u) => `<button type="button" data-runit="${u}" class="${R.unit === u ? 'on' : ''}">${u}</button>`).join('')}</div></div>
-        <div class="choice">${qtys.map((q) => chipBtn('rqty', q, `${q}${R.unit === 'kg' ? 't' : 't'}`, String(q) === String(R.qty) && R.unit === 't')).join('')}</div></div>
+      <div class="field"><div class="flabel"><i>3</i>${R.unit === '㎥' ? '量（立米）は？' : '重さは？'}<small class="unit-note">単価 ¥${yen(defaultPriceOf({ type: R.type, disposer: R.disposer }).price)}/${pu}</small></div>
+        <div class="qty-row"><input id="recQty" class="qty-in" type="number" inputmode="decimal" min="0" step="0.001" placeholder="0" value="${esc(R.qty)}" aria-label="数量">
+          <div class="unit ${units.length === 1 ? 'one' : ''}">${units.map((u) => `<button type="button" data-runit="${u}" class="${R.unit === u ? 'on' : ''}">${u}</button>`).join('')}</div></div>
+        <div class="choice">${qtys.map((q) => chipBtn('rqty', q, `${q.toLocaleString('ja-JP')}${R.unit}`, String(q) === String(R.qty))).join('')}</div></div>
       <div class="field"><div class="flabel"><i>4</i>どこに捨てた？</div>
         <div class="choice">${disp.map((d) => chipBtn('rdisp', d, esc(d), d === R.disposer && !R.typing)).join('')}
           <button type="button" class="cbtn more ${R.typing ? 'on' : ''}" data-rtype-disp>${disp.length ? '＋ ほかの処分場' : '処分場を入れる'}</button></div>
@@ -1160,13 +1204,14 @@
           <label class="cbtn date ${dateIs === 'other' ? 'on' : ''}">${dateIs === 'other' ? md(R.date) : '日付を選ぶ'}<input type="date" id="recDate" value="${R.date}"></label></div></div>`;
     recUpdate();
   }
-  function recQtyT() { const q = num(R.qty); return R.unit === 'kg' ? q / 1000 : q; }
+  // 入れた数量 → 記録する数量（t か ㎥）
+  function recQty() { const q = num(R.qty); return R.unit === '㎥' ? { q, qu: '㎥' } : { q: R.unit === 'kg' ? q / 1000 : q, qu: 't' }; }
   function recUpdate() {
-    const q = recQtyT(), w = WT[R.type] || {};
-    const price = unitPriceOf({ type: R.type, disposer: R.disposer, price: '' });
-    $('#recPreview').innerHTML = q > 0 ? `${esc(caseName(state.cases.find((c) => c.id === R.caseId) || cur()))}・${esc(R.disposer || '処分場なし')}${price ? `<span>処分代の目安 <b>¥${yen(Math.round(q * price))}</b></span>` : ''}` : '<span class="mut">重さを入れると、処分代の目安が出ます</span>';
+    const { q, qu } = recQty(), w = WT[R.type] || {};
+    const d = defaultPriceOf({ type: R.type, disposer: R.disposer }), cost = costOf(q, qu, d.price, d.unit);
+    $('#recPreview').innerHTML = q > 0 ? `${esc(caseName(state.cases.find((c) => c.id === R.caseId) || cur()))}・${esc(R.disposer || '処分場なし')}${d.price && cost != null ? `<span>処分代の目安 <b>¥${yen(Math.round(cost))}</b></span>` : ''}` : `<span class="mut">${R.unit === '㎥' ? '量' : '重さ'}を入れると、処分代の目安が出ます</span>`;
     const b = $('#recSubmit'); b.disabled = !(q > 0);
-    b.textContent = q > 0 ? `${w.name || ''} ${Math.round(q * 1000) / 1000}t を記録する` : '重さを入れてください';
+    b.textContent = q > 0 ? `${w.name || ''} ${num(R.qty).toLocaleString('ja-JP')}${R.unit} を記録する` : `${R.unit === '㎥' ? '量' : '重さ'}を入れてください`;
   }
   $('#recSheet').addEventListener('click', (e) => {
     if (e.target.id === 'recSheet' || e.target.closest('[data-close]')) { closeRec(); return; }
@@ -1174,11 +1219,11 @@
     const g = (k) => e.target.closest(`[data-${k}]`);
     let b;
     if ((b = g('rcase'))) R.caseId = b.dataset.rcase;
-    else if ((b = g('rtype'))) R.type = b.dataset.rtype;
+    else if ((b = g('rtype'))) { if (R.type !== b.dataset.rtype) { R.type = b.dataset.rtype; R.unitAuto = true; R.qty = ''; } }
     else if (g('rmore')) R.more = !R.more;
-    else if ((b = g('runit'))) R.unit = b.dataset.runit;
-    else if ((b = g('rqty'))) { R.qty = b.dataset.rqty; R.unit = 't'; }
-    else if ((b = g('rdisp'))) { R.disposer = b.dataset.rdisp; R.typing = false; }
+    else if ((b = g('runit'))) { R.unit = b.dataset.runit; R.unitAuto = false; }
+    else if ((b = g('rqty'))) { R.qty = b.dataset.rqty; }
+    else if ((b = g('rdisp'))) { R.disposer = b.dataset.rdisp; R.typing = false; R.unitAuto = true; }
     else if (g('rtype-disp')) { R.typing = true; R.disposer = ''; renderRec(); $('#recDisp')?.focus(); return; }
     else if ((b = g('rdate'))) R.date = b.dataset.rdate === 'today' ? todayIso() : ymdShift(-1);
     else return;
@@ -1186,23 +1231,23 @@
   });
   $('#recSheet').addEventListener('input', (e) => {
     if (!R) return;
-    if (e.target.id === 'recQty') { R.qty = e.target.value; document.querySelectorAll('#recBody [data-rqty]').forEach((x) => x.classList.toggle('on', x.dataset.rqty === R.qty && R.unit === 't')); recUpdate(); }
+    if (e.target.id === 'recQty') { R.qty = e.target.value; document.querySelectorAll('#recBody [data-rqty]').forEach((x) => x.classList.toggle('on', x.dataset.rqty === R.qty)); recUpdate(); }
     if (e.target.id === 'recDisp') { R.disposer = e.target.value.trim(); recUpdate(); }
     if (e.target.id === 'recDate' && e.target.value) { R.date = e.target.value; renderRec(); }
   });
   $('#recForm').addEventListener('submit', (e) => {
     e.preventDefault(); if (!R) return;
-    let q = recQtyT(); if (!(q > 0)) { $('#recQty')?.focus(); return; }
+    let { q, qu } = recQty(); if (!(q > 0)) { $('#recQty')?.focus(); return; }
     let kgNote = '';
     if (R.unit === 't' && q >= 100) { kgNote = `（${q}kg として ${q / 1000}t で記録しました）`; q = q / 1000; }
     q = Math.round(q * 1000) / 1000;
     const c = state.cases.find((x) => x.id === R.caseId) || cur();
-    const m = newManifest(c, { type: R.type, qty: String(q), disposer: R.disposer, date: R.date || todayIso() });
+    const m = newManifest(c, { type: R.type, qty: String(q), unit: qu, disposer: R.disposer, date: R.date || todayIso() });
     manifestsOf(c).push(m);
     recRemember({ type: R.type, disposer: R.disposer });
     save(); renderAll();
     try { navigator.vibrate && navigator.vibrate(18); } catch (_) { /* noop */ }
-    $('#recDoneText').innerHTML = `<b>${esc(caseName(c))}</b><br>${esc((WT[R.type] || {}).name || '')} ${q}t${dispOf(m) ? `・処分代 ¥${yen(dispOf(m))}` : ''}${kgNote ? `<br><span class="sub">${esc(kgNote)}</span>` : ''}`;
+    $('#recDoneText').innerHTML = `<b>${esc(caseName(c))}</b><br>${esc((WT[R.type] || {}).name || '')} ${qtyText(m)}${dispOf(m) ? `・処分代 ¥${yen(dispOf(m))}` : ''}${kgNote ? `<br><span class="sub">${esc(kgNote)}</span>` : ''}`;
     $('#recForm').hidden = true; $('#recDone').hidden = false;
   });
   $('#recAgain').addEventListener('click', () => { if (!R) return; R.qty = ''; $('#recDone').hidden = true; $('#recForm').hidden = false; renderRec(); setTimeout(() => $('#recQty')?.focus(), 50); });
@@ -1283,7 +1328,7 @@
     const est = calcEstimate(c, state.settings).net, disp = dispSummary(c).total, ex = expenseSummary(c).total, ls = leaseSummary(c).total;
     const spent = Math.round(disp + ex + ls), remain = est - spent, pct = est ? Math.min(100, Math.round(spent / est * 100)) : 0;
     const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m)), last = ms.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
-    const tt = ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+    const tt = ms.filter((m) => qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0);
     const map = c.siteAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.siteAddress)}` : '';
     box.innerHTML = `
       <div class="stat3">${[['plan', 'これから'], ['live', '工事中'], ['done', '完了']].map(([v, l]) => `<button type="button" data-st="${v}" class="${k === v ? 'on ' + v : ''}">${l}</button>`).join('')}</div>
@@ -1314,7 +1359,7 @@
         ${est ? `<div class="pbar"><i class="${pct >= 90 ? 'bad' : pct >= 70 ? 'mid' : ''}" style="width:${pct}%"></i></div><p class="lab">見積の${pct}%を使っています（処分代 ¥${yen(disp)}・経費 ¥${yen(ex)}・リース ¥${yen(ls)}）</p>` : '<p class="lab">延床面積を入れると見積が出ます</p>'}
       </section>
       <section class="card tap" data-go="manifest">
-        <div class="ct">処分<small>${last ? `最後：${md(last.date)} ${esc((WT[last.type] || {}).name || '')} ${last.qty}t ›` : 'まだ記録がありません ›'}</small></div>
+        <div class="ct">処分<small>${last ? `最後：${md(last.date)} ${esc((WT[last.type] || {}).name || '')} ${qtyText(last)} ›` : 'まだ記録がありません ›'}</small></div>
         <div class="pc-row"><span class="big">${Math.round(tt * 100) / 100}t</span><span class="big">¥${yen(dispSummary(c).total)}</span></div>
       </section>
       <section class="card">
@@ -1407,7 +1452,7 @@
       .sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.lineAt || '').localeCompare(String(x.lineAt || '')));
     $('#wasteLog').innerHTML = list.length ? list.map((m) => {
       const late = manifestChecks(m).some((x) => x.state === 'late');
-      return `<li><button type="button" class="row" data-edit="${m.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${num(m.qty) ? m.qty + ((WT[m.type] || {}).unit || 't') : '重さ未入力'}</span>
+      return `<li><button type="button" class="row" data-edit="${m.id}"><span class="r-main"><span class="r-title">${wchip(m.type)} ${num(m.qty) ? qtyText(m) : '数量未入力'}${unitMismatch(m) ? ' <span class="chip late">単位を確認</span>' : ''}</span>
         <span class="r-sub">${md(m.date)}・${esc(m.disposer || '処分場未入力')}${m.via === 'line' ? '・<span class="line-t">LINE</span>' : ''}${late ? '・<span class="neg">返送期限切れ</span>' : ''}</span></span>
         <span class="r-num"><b>${tooHeavy(m) ? '要確認' : '¥' + yen(dispOf(m))}</b></span></button>${tooHeavy(m) ? `<div class="fixrow">${fixKgHtml(m)}</div>` : ''}</li>`;
     }).join('') : '<li class="empty-row">まだ記録がありません。上の「＋ 捨てた記録をつける」か、公式LINEから記録できます。</li>';
@@ -1440,7 +1485,7 @@
     const el = e.target, card = el.closest('[data-mid]'); if (!card || !el.dataset.f) return;
     const m = manifestsOf(cur()).find((x) => x.id === card.dataset.mid); if (!m) return;
     m[el.dataset.f] = el.value; save();
-    if (el.dataset.f === 'kind' || el.dataset.f === 'type') { renderManifestList(cur()); }
+    if (el.dataset.f === 'kind' || el.dataset.f === 'type' || el.dataset.f === 'unit') { renderManifestList(cur()); renderWasteLog(); }
     else {
       const ch = $('#chips-' + m.id); if (ch) ch.innerHTML = chipsHtml(m);
       const mc = $('#mcost-' + m.id); if (mc) mc.innerHTML = mcostHtml(m);
@@ -1513,7 +1558,7 @@
           <label class="pname">LINEでの呼び方（カンマ区切り）<input data-sf="alias" value="${esc(st.alias || '')}" placeholder="例：ヒラヤマ, 平山"></label>
           <label>締め日<select data-sf="close">${['末'].concat(Array.from({ length: 28 }, (_, i) => String(i + 1))).map((x) => `<option value="${x}" ${String(st.close ?? '末') === x ? 'selected' : ''}>${closeLabel(x)}締め</option>`).join('')}</select></label>
           <button type="button" class="btn ghost small" data-sdel="${st.id}">削除</button></div>
-        <div class="disp-grid">${WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-sp="${w.id}" value="${esc(st.prices?.[w.id] ?? '')}" placeholder="受け入れなし／標準 ${yen(dispPrice(w.id))}"></label>`).join('')}</div>
+        <div class="disp-grid">${WASTE_TYPES.map((w) => `<label>${esc(w.name)}<span class="qty-unit"><input type="number" min="0" inputmode="decimal" data-sp="${w.id}" value="${esc(st.prices?.[w.id] ?? '')}" placeholder="標準 ${yen(dispPrice(w.id))}/${stdUnitOf(w.id)}"><select data-su="${w.id}" aria-label="単位">${['t', 'kg', '㎥'].map((u) => `<option value="${u}" ${siteUnitOf(st, w.id) === u ? 'selected' : ''}>円/${u}</option>`).join('')}</select></span></label>`).join('')}</div>
       </div>`).join('') || '<p class="empty">登録された処分場はありません。</p>';
     renderSiteCompare();
   }
@@ -1536,6 +1581,7 @@
     if (e.target.dataset.sf === 'close') st.close = e.target.value;
     if (e.target.dataset.sf === 'alias') st.alias = e.target.value;
     if (e.target.dataset.sp) st.prices[e.target.dataset.sp] = e.target.value;
+    if (e.target.dataset.su) st.units = { ...(st.units || {}), [e.target.dataset.su]: e.target.value };
     state.settings.sites = sites; save(); renderSiteCompare(); renderAll();
   });
   $('#sites').addEventListener('click', (e) => {
@@ -1621,29 +1667,91 @@
     const c = cur(); c.expenses = expensesOf(c).filter((x) => x.id !== id); save(); renderAll();
   });
   $('#expenseMonthly').addEventListener('change', (e) => { if (e.target.id === 'expMonth') { expMonth = e.target.value; renderExpenseMonthly(); } });
-  // 設定：処分単価
-  function renderDispPrices() {
-    const dp = state.settings.dispPrices || {};
-    $('#dispPrices').innerHTML = WASTE_TYPES.map((w) => `<label>${esc(w.name)}（円/${w.unit}）<input type="number" min="0" data-disp="${w.id}" value="${esc(dp[w.id] ?? '')}"></label>`).join('');
+  // 設定：ゴミの種類と単価（いつも出す・単価・自分で足す種類）
+  const LEGALS = ['がれき類', '木くず', '廃プラスチック類', 'ガラスくず・コンクリートくず及び陶磁器くず', '金属くず', '紙くず', '繊維くず', '混合廃棄物', 'その他（種類を確認）'];
+  let typeAddOpen = false, typeAddUnit = 't', renameT = 0;
+  function renderTypeEditor() {
+    KJCore.setCustomTypes(state.settings.customTypes);
+    const dp = state.settings.dispPrices || {}, on = new Set(state.settings.alwaysTypes || []);
+    const used = new Set(state.cases.flatMap((c) => manifestsOf(c).map((m) => m.type)));
+    const row = (w) => {
+      const asb = w.id === 'asb' || w.id === 'asbsp';
+      return `<li class="trow ${w.custom ? 'custom' : ''}">
+        <div class="tr-top">
+          ${asb ? '<span class="tr-auto" title="アスベストは事前調査の結果で自動で出ます">自動</span>' : `<label class="tr-on"><input type="checkbox" data-always="${w.id}" ${on.has(w.id) ? 'checked' : ''} aria-label="${esc(w.name)}をいつも出す"></label>`}
+          ${w.custom ? `<input class="tr-name" data-cname="${w.id}" value="${esc(w.name)}" aria-label="名前">` : `<span class="tr-name">${esc(w.name)}</span>`}
+          ${w.custom ? `<button type="button" class="tr-del" data-cdel="${w.id}" aria-label="${esc(w.name)}を消す" ${used.has(w.id) ? 'data-used="1"' : ''}>×</button>` : ''}
+        </div>
+        <div class="tr-bot">
+          <span class="legal">${esc(w.legal)}</span>
+          <label class="tr-price"><span>¥</span><input type="number" min="0" inputmode="decimal" data-disp="${w.id}" value="${esc(dp[w.id] ?? '')}" placeholder="単価"><span>/</span><select data-punit="${w.id}" aria-label="${esc(w.name)}の単価の単位">${['t', 'kg', '㎥'].map((u) => `<option value="${u}" ${stdUnitOf(w.id) === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+        </div>
+        ${w.custom ? `<label class="tr-alias">LINEでの呼び方<input data-calias="${w.id}" value="${esc(w.alias || '')}" placeholder="例 タイヤ、古タイヤ（なくてもOK）"></label>` : ''}
+      </li>`;
+    };
+    const html = `
+      <p class="hint">チェックした種類が、どの現場でも最初から出ます。単価は「円/t」「円/kg」「円/㎥（立米）」から選べます。処分場ごとに違うときは、設定の「処分場ごとの単価」で処分場ごとに単価と単位を入れられます（そちらが優先）。</p>
+      <ul class="tlist">${WASTE_TYPES.filter((w) => !w.custom).map(row).join('')}</ul>
+      <div class="sec-label">自分で足した種類</div>
+      <ul class="tlist">${WASTE_TYPES.filter((w) => w.custom).map(row).join('') || '<li class="empty-row">まだありません。下の「＋ ゴミの種類を足す」から追加できます。</li>'}</ul>
+      ${typeAddOpen ? `<div class="tadd card">
+        <label>名前<input id="taName" placeholder="例 タイヤ、畳、家電" autocomplete="off"></label>
+        <div class="field"><div class="flabel">数え方</div><div class="choice"><button type="button" class="cbtn ${typeAddUnit === 't' ? 'on' : ''}" data-tunit="t">トン（t）</button><button type="button" class="cbtn ${typeAddUnit === '㎥' ? 'on' : ''}" data-tunit="㎥">立米（㎥）</button></div></div>
+        <label>単価（円/${typeAddUnit}）<input id="taPrice" type="number" min="0" inputmode="numeric" placeholder="例 20000"></label>
+        <label>法律上の種類（報告書の集計用・分からなければそのまま）<select id="taLegal">${LEGALS.map((l) => `<option ${l.startsWith('その他') ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label>LINEでの呼び方（なくてもOK）<input id="taAlias" placeholder="例 古タイヤ、タイヤ" autocomplete="off"></label>
+        <div class="tadd-btns"><button type="button" class="btn go" data-tadd>この種類を足す</button><button type="button" class="btn ghost" data-tcancel>やめる</button></div>
+      </div>` : '<button type="button" class="btn ghost wide" data-topen>＋ ゴミの種類を足す</button>'}`;
+    $('#typeEditor').innerHTML = html;
   }
-  $('#dispPrices').addEventListener('input', (e) => {
-    const id = e.target.dataset.disp; if (!id) return;
-    state.settings.dispPrices = { ...state.settings.dispPrices, [id]: e.target.value }; save(); renderAll();
+  const renderDispPrices = renderTypeEditor, renderAlwaysTypes = () => {};
+  $('#typeEditor').addEventListener('input', (e) => {
+    const t = e.target, S = state.settings;
+    if (t.dataset.disp) { S.dispPrices = { ...S.dispPrices, [t.dataset.disp]: t.value }; save(); renderAllKeep(); return; }
+    const cu = (id) => (S.customTypes || []).find((x) => x.id === id);
+    if (t.dataset.cname) { const u = cu(t.dataset.cname); if (u) { u.name = t.value; save(); renderAllKeep(); clearTimeout(renameT); renameT = setTimeout(renderSites, 600); } return; }
+    if (t.dataset.calias) { const u = cu(t.dataset.calias); if (u) { u.alias = t.value; save(); } }
   });
-  renderDispPrices();
-  // 設定：いつも出るゴミ
-  function renderAlwaysTypes() {
-    const on = new Set(state.settings.alwaysTypes || []);
-    $('#alwaysTypes').innerHTML = WASTE_TYPES.filter((w) => w.id !== 'asb' && w.id !== 'asbsp')
-      .map((w) => `<label class="check"><input type="checkbox" data-always="${w.id}" ${on.has(w.id) ? 'checked' : ''}> ${esc(w.name)} <span class="legal">${esc(w.legal)}</span></label>`).join('');
-  }
-  $('#alwaysTypes').addEventListener('change', (e) => {
+  // 入力中の欄を作り直さないように、ほかの画面だけ描き直す
+  function renderAllKeep() { const box = $('#typeEditor'); box.dataset.keep = '1'; renderAll(); delete box.dataset.keep; }
+  $('#typeEditor').addEventListener('change', (e) => {
+    if (e.target.dataset.punit) {
+      const S = state.settings; S.priceUnits = { ...(S.priceUnits || {}), [e.target.dataset.punit]: e.target.value }; save(); renderAll(); renderSites();
+      toast(`${(WT[e.target.dataset.punit] || {}).name}：単価を「円/${e.target.value}」にしました。単価の数字も確認してください`); return;
+    }
     const id = e.target.dataset.always; if (!id) return;
     const set = new Set(state.settings.alwaysTypes || []);
     if (e.target.checked) set.add(id); else set.delete(id);
     state.settings.alwaysTypes = WASTE_TYPES.map((w) => w.id).filter((x) => set.has(x)); save(); renderAll();
   });
-  renderAlwaysTypes();
+  $('#typeEditor').addEventListener('click', (e) => {
+    const S = state.settings; let b;
+    if (e.target.closest('[data-topen]')) { typeAddOpen = true; typeAddUnit = 't'; renderTypeEditor(); setTimeout(() => $('#taName')?.focus(), 50); return; }
+    if (e.target.closest('[data-tcancel]')) { typeAddOpen = false; renderTypeEditor(); return; }
+    if ((b = e.target.closest('[data-tunit]'))) { const keep = { n: $('#taName').value, p: $('#taPrice').value, l: $('#taLegal').value, a: $('#taAlias').value }; typeAddUnit = b.dataset.tunit; renderTypeEditor(); $('#taName').value = keep.n; $('#taPrice').value = keep.p; $('#taLegal').value = keep.l; $('#taAlias').value = keep.a; return; }
+    if (e.target.closest('[data-tadd]')) {
+      const name = $('#taName').value.trim(); if (!name) { $('#taName').focus(); toast('名前を入れてください'); return; }
+      if (WASTE_TYPES.some((w) => w.name === name)) { toast('同じ名前の種類があります'); return; }
+      const id = 'u_' + uid();
+      S.customTypes = [...(S.customTypes || []), { id, name, unit: typeAddUnit, legal: $('#taLegal').value, alias: $('#taAlias').value.trim() }];
+      if ($('#taPrice').value !== '') S.dispPrices = { ...S.dispPrices, [id]: $('#taPrice').value };
+      S.alwaysTypes = [...(S.alwaysTypes || []), id];
+      typeAddOpen = false; save(); renderAll(); renderSites(); toast(`「${name}」を足しました（いつも出す種類に入れました）`); return;
+    }
+    if ((b = e.target.closest('[data-cdel]'))) {
+      if (b.dataset.used) { toast('この種類の記録があるので消せません。チェックを外すと最初の一覧から消えます'); return; }
+      const u = (S.customTypes || []).find((x) => x.id === b.dataset.cdel); if (!u || !confirm(`「${u.name}」を消しますか？`)) return;
+      S.customTypes = S.customTypes.filter((x) => x.id !== u.id); S.alwaysTypes = (S.alwaysTypes || []).filter((x) => x !== u.id);
+      const dp = { ...S.dispPrices }; delete dp[u.id]; S.dispPrices = dp; save(); renderAll(); renderSites();
+    }
+  });
+  // 処分の画面からも開ける（同じものを下から出す）
+  $('#typeOpen').addEventListener('click', () => { $('#typeSheetBody').appendChild($('#typeEditor')); renderTypeEditor(); $('#typeSheet').hidden = false; document.body.classList.add('sheet-open'); });
+  $('#typeSheet').addEventListener('click', (e) => {
+    if (e.target.id !== 'typeSheet' && !e.target.closest('[data-close]')) return;
+    $('#typeHome').appendChild($('#typeEditor')); $('#typeSheet').hidden = true; document.body.classList.remove('sheet-open'); renderAll();
+  });
+  renderTypeEditor();
   $('#manifestAlerts').addEventListener('click', (e) => {
     const b = e.target.closest('[data-goto]'); if (!b) return;
     state.currentId = b.dataset.goto; save(); fillForm(caseForm, cur()); renderAll();

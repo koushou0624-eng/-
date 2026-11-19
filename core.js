@@ -26,6 +26,16 @@
     { id: 'asbsp', name: 'アスベスト（レベル1・2の吹付けなど）', legal: '廃石綿等（特別管理産業廃棄物）', unit: '㎥', sp: true },
   ];
   const WT = Object.fromEntries(WASTE_TYPES.map((w) => [w.id, w]));
+  const BASE_COUNT = WASTE_TYPES.length;
+  // 設定で足したゴミの種類（settings.customTypes）を、種類の一覧に入れる（何度呼んでも同じ結果）
+  function setCustomTypes(list) {
+    WASTE_TYPES.splice(BASE_COUNT).forEach((w) => { delete WT[w.id]; });
+    (list || []).forEach((u) => {
+      if (!u || !u.id || !u.name) return;
+      const w = { id: u.id, name: String(u.name), legal: u.legal || 'その他（種類を確認）', unit: u.unit === '㎥' ? '㎥' : 't', custom: true, alias: u.alias || '' };
+      WASTE_TYPES.push(w); WT[w.id] = w;
+    });
+  }
 
   // 電子マニフェストの登録期限：引渡しから3日以内（土日を除いた目安）
   function plus3BizDays(iso) {
@@ -185,13 +195,22 @@
   };
   const caseLabel = (c) => `${caseName(c)}${c.siteAddress ? '（' + c.siteAddress + '）' : ''}`;
 
-  // 単価：処分場ごとの単価 → 標準の単価
-  function priceFor(state, disposer, type) {
+  // 単価：処分場ごとの単価 → 標準の単価。単位（円/t・円/kg・円/㎥）も種類・処分場ごとに決められる
+  const stdUnit = (s, type) => ((s.priceUnits || {})[type]) || ((WT[type] || {}).unit === '㎥' ? '㎥' : 't');
+  function priceInfo(state, disposer, type) {
     const s = state.settings || {};
     const st = (s.sites || []).find((x) => x.name && x.name.trim() === String(disposer || '').trim());
     const v = st && st.prices ? st.prices[type] : '';
-    if (v !== '' && v != null) return num(v);
-    return num((s.dispPrices || {})[type]);
+    if (v !== '' && v != null) return { price: num(v), unit: ((st.units || {})[type]) || stdUnit(s, type), site: true };
+    return { price: num((s.dispPrices || {})[type]), unit: stdUnit(s, type), site: false };
+  }
+  function priceFor(state, disposer, type) { return priceInfo(state, disposer, type).price; }
+  // 処分代：数量（t か ㎥）× 単価（円/t・円/kg・円/㎥）。単位が合わないときは null
+  function costOf(qty, qtyUnit, price, priceUnit) {
+    if (qtyUnit === '㎥') return priceUnit === '㎥' ? qty * price : null;
+    if (priceUnit === 'kg') return qty * 1000 * price;
+    if (priceUnit === 't') return qty * price;
+    return null;
   }
 
   function parseRecord(text, state, date) {
@@ -208,17 +227,20 @@
     } else if (/昨日|きのう/.test(raw)) { day = addDays(isoOf(now), -1); t = t.replace(/昨日|キノウ/g, ' '); }
     else if (/一昨日|おととい/.test(raw)) { day = addDays(isoOf(now), -2); t = t.replace(/一昨日|オトトイ/g, ' '); }
     // 重さ・量：「3t」「3トン」「2.4ton」「3000kg」「3000キロ」「2m3」「2立米」
-    let qty = null, unit = 't';
+    let qty = null, unit = 't', explicit = false;
     const w = t.match(/(\d+(?:\.\d+)?)\s*(トン|ton|t|kg|キロ|m3|立米|リューベ)(?![a-z])/i);
     if (w) {
-      qty = num(w[1]);
+      qty = num(w[1]); explicit = true;
       if (/kg|キロ/i.test(w[2])) qty = qty / 1000;
       if (/m3|立米|リューベ/i.test(w[2])) unit = 'm3';
       t = t.replace(w[0], ' ');
     }
-    // ゴミの種類
+    // ゴミの種類（自分で足した種類の名前・呼び方も見る）
+    setCustomTypes((state.settings || {}).customTypes);
+    const custom = WASTE_TYPES.filter((w) => w.custom).flatMap((w) => [w.name].concat(String(w.alias || '').split(/[,、，\s]+/)).filter(Boolean).map((x) => [kana(x), w.id]));
+    const words = custom.concat(WASTE_WORDS).sort((a, b) => b[0].length - a[0].length);
     let type = null;
-    for (const [word, id] of WASTE_WORDS) { const i = t.indexOf(word); if (i >= 0) { type = id; t = t.slice(0, i) + ' ' + t.slice(i + word.length); break; } }
+    for (const [word, id] of words) { const i = t.indexOf(word); if (i >= 0) { type = id; t = t.slice(0, i) + ' ' + t.slice(i + word.length); break; } }
     if (qty == null) { const bare = t.match(/(?:^|\s)(\d+(?:\.\d+)?)(?=\s|$)/); if (bare) { qty = num(bare[1]); t = t.replace(bare[0], ' '); } } // 単位なしの数字はトンとみなす
     // 空白なしで続けて書かれても分けられるよう、カタカナ・英字と漢字・ひらがなの境目でも区切る（「ヒラヤマ住吉区」→「ヒラヤマ」「住吉区」）
     const split = (x) => x.match(/[\u30a0-\u30ffa-z0-9ー]+|[^\u30a0-\u30ffa-z0-9ー]+/g) || [];
@@ -272,6 +294,11 @@
       disposer = rest.length ? rest[0] : ((state.settings || {}).defDisposer || '');
     }
 
+    // 単位を書かずに数字だけのとき：単価が㎥の種類なら㎥、100以上ならkgとみなす
+    if (!explicit && qty != null && type) {
+      if (priceInfo(state, disposer, type).unit === '㎥') unit = 'm3';
+      else if (qty >= 100) qty = qty / 1000;
+    }
     const res = { type, qty, unit, date: isoOf(day), disposer, target, candidates };
     res.missing = [!type && 'type', qty == null && 'qty', !target && 'case'].filter(Boolean);
     return res;
@@ -299,7 +326,7 @@
   function manifestFromRecord(r, state, by) {
     return {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind: 'paper', no: '', date: r.date, type: r.type,
-      qty: String(Math.round(r.qty * 1000) / 1000), carrier: (state.settings || {}).defCarrier || '', disposer: r.disposer || '',
+      qty: String(Math.round(r.qty * 1000) / 1000), unit: r.unit === 'm3' ? '㎥' : 't', carrier: (state.settings || {}).defCarrier || '', disposer: r.disposer || '',
       reg: '', b2: '', d: '', e: '', via: 'line', lineBy: by || '', lineAt: new Date().toISOString(),
     };
   }
@@ -308,9 +335,11 @@
 
   function recordReply(r, state) {
     const w = WT[r.type] || { name: r.type, unit: 't' };
-    const price = priceFor(state, r.disposer, r.type);
+    const pi = priceInfo(state, r.disposer, r.type), qu = r.unit === 'm3' ? '㎥' : 't', cost = costOf(r.qty, qu, pi.price, pi.unit);
+    const qtyTxt = qu === '㎥' ? `${r.qty}㎥` : pi.unit === 'kg' ? `${Math.round(r.qty * 1000)}kg` : `${r.qty}t`;
+    const costTxt = !pi.price ? '単価未登録' : cost == null ? `単価が「円/${pi.unit}」なので計算できません（${pi.unit === '㎥' ? '㎥（立米）' : '重さ'}で送ってください）` : `¥${yen(cost)}（単価 ¥${yen(pi.price)}/${pi.unit}）`;
     const site = (state.settings && (state.settings.sites || []).find((x) => x.name === r.disposer)) ? '' : '（単価が未登録の処分場です）';
-    return `✅ 登録しました\n現場：${caseLabel(r.target)}\n日付：${r.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2')}\nゴミ：${w.name} ${r.qty}${r.unit === 'm3' ? '㎥' : 't'}\n処分場：${r.disposer || '（未入力）'}${site}\n処分代：${price ? '¥' + yen(r.qty * price) + '（単価 ¥' + yen(price) + '）' : '単価未登録'}\n\n間違えたら「取消」と送ってください。`;
+    return `✅ 登録しました\n現場：${caseLabel(r.target)}\n日付：${r.date.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2')}\nゴミ：${w.name} ${qtyTxt}\n処分場：${r.disposer || '（未入力）'}${site}\n処分代：${costTxt}\n\n間違えたら「取消」と送ってください。`;
   }
   function askReply(r) {
     const parts = [];
@@ -327,6 +356,7 @@
 
   // 毎朝の通知に載せる注意をまとめる（画面の「全案件の注意」と同じ基準）
   function collectAlerts(state, date) {
+    setCustomTypes((state.settings || {}).customTypes);
     const now = todayOf(date);
     const settings = state.settings || {};
     const out = { lease: [], manifest: [], schedule: [] };
@@ -380,10 +410,10 @@
 
   const api = {
     num, yen, isoOf, addDays, fmtDate, todayOf,
-    WASTE_TYPES, WT, plus3BizDays, manifestChecks,
+    WASTE_TYPES, WT, setCustomTypes, plus3BizDays, manifestChecks,
     LEASE_MODES, lastOfMonth, addMonthsClamp, companyOf, closeOf, closeLabel, closeDate, segEnd, dayCount, mLabel, leaseCalc,
     caseName, collectAlerts, alertMessage,
-    kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, caseLabel, LINE_HELP, ticketToText, TICKET_PROMPT,
+    kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, priceInfo, costOf, caseLabel, LINE_HELP, ticketToText, TICKET_PROMPT,
   };
   root.KJCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

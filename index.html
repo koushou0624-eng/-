@@ -128,6 +128,13 @@
     </form>
   </div>
 </div>
+<!-- ゴミの種類と単価 -->
+<div id="typeSheet" class="sheet-back" hidden>
+  <div class="sheet" role="dialog" aria-label="ゴミの種類と単価">
+    <div class="sheet-head"><div class="sheet-title">ゴミの種類と単価</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="typeSheetBody"></div>
+  </div>
+</div>
 <!-- 現場の情報を直す（区切りごと） -->
 <div id="infoSheet" class="sheet-back" hidden>
   <div class="sheet info-sheet" role="dialog" aria-label="現場の情報">
@@ -236,7 +243,7 @@
   <section id="tab-manifest" class="tab no-print">
     <div id="dispTop"></div>
     <button type="button" class="btn go big" id="qwOpen">＋ 捨てた記録をつける</button>
-    <p class="sec-label">記録（新しい順）</p>
+    <div class="sec-row"><p class="sec-label">記録（新しい順）</p><button type="button" class="link small-link" id="typeOpen">ゴミの種類と単価 ›</button></div>
     <ul id="wasteLog" class="rows"></ul>
     <div id="manifestAlerts"></div>
     <details id="manifestDetail" class="card fold">
@@ -366,7 +373,6 @@
         <legend>マニフェスト</legend>
         <label>いつもの収集運搬業者<input name="defCarrier" placeholder="〇〇運輸（許可番号 〇〇〇）"></label>
         <label>いつもの処分業者<input name="defDisposer" placeholder="〇〇リサイクルセンター"></label>
-        <div class="always"><div class="always-title">いつも出るゴミ（どの案件にも最初から欄を表示）</div><div id="alwaysTypes"></div></div>
       </fieldset>
       <fieldset>
         <legend>リースの機械（よく借りるもの）</legend>
@@ -386,9 +392,8 @@
         <button type="button" class="btn ghost small" id="addPreset">＋ 機械を追加</button>
       </fieldset>
       <fieldset>
-        <legend>処分単価（ゴミの種類ごと）</legend>
-        <p class="hint">マニフェストの数量 × この単価で処分代を自動計算します。処分場ごとに違う場合は、マニフェスト1枚ごとに単価を変えられます。</p>
-        <div id="dispPrices" class="disp-grid"></div>
+        <legend>ゴミの種類と単価</legend>
+        <div id="typeHome"><div id="typeEditor"></div></div>
       </fieldset>
       <fieldset class="wide">
         <legend>処分場ごとの単価</legend>

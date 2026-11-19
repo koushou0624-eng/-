@@ -700,3 +700,36 @@ label.toggle:has(input:checked) { border-color: var(--brand); background: var(--
 .m3 > div:first-child { border-top: 0; }
 .m3 span { font-size: 13px; }
 .m3 b { font-size: 19px; }
+
+
+/* ===== ゴミの種類と単価 ===== */
+.sec-row { display: flex; justify-content: space-between; align-items: baseline; }
+.small-link { font-size: 13px; font-weight: 700; text-decoration: none; padding: 8px 4px; }
+.tlist { list-style: none; margin: 0 0 14px; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.trow { padding: 12px 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.trow:first-child { border-top: 0; }
+.tr-top { display: flex; align-items: center; gap: 12px; }
+.tr-on { margin: 0; display: flex; }
+.tr-on input { width: 26px; height: 26px; }
+.tr-auto { font-size: 11px; font-weight: 700; color: var(--muted); background: var(--soft); border-radius: 6px; padding: 4px 6px; }
+.tr-name { flex: 1; font-size: 16px; font-weight: 700; min-width: 0; }
+input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
+.tr-del { width: 40px; height: 40px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--bad); font-size: 20px; cursor: pointer; flex: none; }
+.tr-bot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 38px; }
+.tr-bot .legal { font-size: 11px; flex: 1; min-width: 0; }
+.tr-price { display: flex; align-items: center; gap: 4px; margin: 0; color: var(--muted); font-size: 14px; flex: none; }
+.tr-price input { width: 120px; min-height: 42px; margin: 0; text-align: right; font-weight: 700; color: var(--ink); }
+.tr-alias { padding-left: 38px; margin: 0; font-size: 12px; }
+.tr-alias input { min-height: 40px; font-size: 14px; }
+.tadd { display: grid; gap: 2px; }
+.tadd-btns { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
+#typeSheetBody { overflow: auto; }
+
+/* 単価の単位（円/t・円/kg・円/㎥） */
+.tr-price select { width: auto; min-height: 42px; margin: 0; padding: 6px 30px 6px 10px; font-weight: 700; }
+.tr-price input { width: 104px; }
+.qty-unit { display: flex; gap: 6px; margin-top: 5px; }
+.qty-unit input { flex: 1; min-width: 0; margin: 0; }
+.qty-unit select { width: auto; flex: none; margin: 0; padding-right: 30px; font-weight: 700; }
+.unit.one { grid-template-rows: 1fr; }
+.unit-note { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
