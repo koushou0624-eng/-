@@ -733,3 +733,31 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
 .qty-unit select { width: auto; flex: none; margin: 0; padding-right: 30px; font-weight: 700; }
 .unit.one { grid-template-rows: 1fr; }
 .unit-note { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* ===== リース：現場ごと ===== */
+.lease-mini { list-style: none; margin: 0 0 6px; padding: 0; }
+.lease-mini li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+.lease-mini li:first-child { border-top: 0; }
+.lm-n { font-weight: 700; font-size: 15px; display: grid; gap: 2px; min-width: 0; }
+.lm-n small { font-weight: 400; font-size: 12px; color: var(--muted); }
+.lease-mini b { font-variant-numeric: tabular-nums; }
+.bd.ok { background: var(--ok-soft); color: var(--ok); }
+.lm-total { border-top: 2px solid var(--line); padding-top: 8px; }
+.lm-add { margin-top: 10px; min-height: 46px; }
+.moves { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+.mv-title { font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.mv-title small { font-weight: 400; font-size: 12px; color: var(--muted); }
+.mv-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.mv-list li { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 14px; }
+.mv-site { font-weight: 700; }
+.mv-site.me { color: var(--brand); }
+.mv-when { color: var(--muted); flex: 1; }
+.mv-del { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--bad); cursor: pointer; }
+.mv-split { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.mv-split span { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); }
+.mv-add { margin-top: 8px; }
+.mv-add summary { cursor: pointer; color: var(--link); font-weight: 700; font-size: 14px; padding: 6px 0; }
+.mv-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; align-items: end; }
+.mv-row .btn { grid-column: 1 / -1; margin-top: 4px; }
+.in-title { font-size: 16px; margin: 18px 0 8px; }
+.mcard.incoming { border-style: dashed; }

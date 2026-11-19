@@ -705,9 +705,47 @@
     (r.segs || []).forEach((g, i) => { out[g.ym] = (out[g.ym] || 0) + g.amount + (i === 0 ? num(l.transport) + num(l.other) : 0); });
     return out;
   }
+  const DAY = 86400000;
+  const dIso = (iso) => (iso ? new Date(iso + 'T00:00:00') : null);
+  const dCount = (a, b) => Math.round((b - a) / DAY) + 1;
+  const ownerOf = (l) => state.cases.find((c) => leasesOf(c).includes(l));
+  // その機械がいた現場と期間（借りた現場 → 「この日から移した」ごと）
+  function siteIntervals(l, owner) {
+    if (!l.start || !owner) return [];
+    const endD = l.end ? dIso(l.end) : today();
+    const mv = (l.moves || []).filter((m) => m.date && m.caseId && m.date > l.start && (!l.end || m.date <= l.end) && state.cases.some((c) => c.id === m.caseId))
+      .slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+    const pts = [{ caseId: owner.id, from: dIso(l.start) }].concat(mv.map((m) => ({ caseId: m.caseId, from: dIso(m.date), mid: m.id })));
+    return pts.map((x, i) => ({ ...x, to: i < pts.length - 1 ? new Date(pts[i + 1].from.getTime() - DAY) : endD })).filter((x) => x.to >= x.from);
+  }
+  const overlap = (a1, a2, b1, b2) => { const st = a1 > b1 ? a1 : b1, en = a2 < b2 ? a2 : b2; return en < st ? 0 : dCount(st, en); };
+  // 1台のリース代を現場ごとに分ける：締めごとの金額を、その区切りでいた日数で按分。回送費・その他は借りた現場
+  function leaseAlloc(l, owner = ownerOf(l)) {
+    const r = leaseCalc(l), iv = siteIntervals(l, owner), out = {};
+    const get = (id) => out[id] || (out[id] = { cost: 0, days: 0, months: {} });
+    const addM = (id, ym, v) => { const o = get(id); o.cost += v; if (ym) o.months[ym] = (o.months[ym] || 0) + v; };
+    iv.forEach((x) => { get(x.caseId).days += dCount(x.from, x.to); });
+    (r.segs || []).forEach((g, i) => {
+      const per = iv.map((x) => overlap(g.from, g.to, x.from, x.to)), tot = per.reduce((a, b) => a + b, 0);
+      if (!tot) addM(owner.id, g.ym, g.amount); else per.forEach((d, k) => { if (d) addM(iv[k].caseId, g.ym, g.amount * d / tot); });
+      if (i === 0) addM(owner.id, g.ym, num(l.transport) + num(l.other));
+    });
+    if (owner && !out[owner.id]) get(owner.id);
+    return { r, iv, out };
+  }
+  // この現場で使ったリース（ほかの現場から移ってきた機械も入る）
+  function leaseShares(c) {
+    const items = [];
+    state.cases.forEach((o) => leasesOf(o).forEach((l) => {
+      const a = leaseAlloc(l, o), mine = a.out[c.id]; if (!mine) return;
+      const last = a.iv[a.iv.length - 1];
+      items.push({ l, owner: o, ...mine, r: a.r, iv: a.iv, here: !!(a.r.ongoing && last && last.caseId === c.id) });
+    }));
+    return items;
+  }
   function leaseSummary(c) {
-    const ls = leasesOf(c);
-    return { total: Math.round(ls.reduce((a, l) => a + leaseCalc(l).cost, 0)), count: ls.length };
+    const it = leaseShares(c);
+    return { total: Math.round(it.reduce((a, x) => a + x.cost, 0)), count: it.length, items: it };
   }
   function leaseCalcHtml(l, c = cur()) {
     const r = leaseCalc(l);
@@ -737,7 +775,7 @@
     const ex = num(l.transport) + num(l.other);
     return `<div class="table-wrap"><table class="cost wide mini"><thead><tr><th>請求（締めごと）</th><th class="num">日数</th><th>計算</th><th class="num">金額</th><th>状態</th></tr></thead><tbody>${rows}
       ${ex ? `<tr><td>回送費・その他</td><td></td><td></td><td class="num">¥${yen(ex)}</td><td></td></tr>` : ''}</tbody>
-      <tfoot><tr><th colspan="3">この現場の合計（${r.ongoing ? '今日まで' : '返却まで'}）</th><td class="num"><b>¥${yen(r.cost)}</b></td><td></td></tr></tfoot></table></div>`;
+      <tfoot><tr><th colspan="3">${(l.moves || []).length ? 'この機械の合計（全部の現場' : 'この現場の合計（'}${(l.moves || []).length ? '・' : ''}${r.ongoing ? '今日まで' : '返却まで'}）</th><td class="num"><b>¥${yen(r.cost)}</b></td><td></td></tr></tfoot></table></div>`;
   }
   // 現場の完了予定日まで借り続けた場合の見込み
   function leaseForecastHtml(l, r, c) {
@@ -758,6 +796,7 @@
       <div class="mcard" data-lid="${l.id}">
         <div class="mhead"><b>${esc(l.name || '（名前なし）')}</b><span class="flex1"></span><button class="btn ghost small" data-ldel="${l.id}">削除</button></div>
         <div class="lcalc" id="lcalc-${l.id}">${leaseCalcHtml(l, c)}</div>
+        ${movesHtml(l, c)}
         <div class="mgrid">
           <label>機械の名前<input data-lf="name" value="${esc(l.name)}"></label>
           <label>リース会社（締め日は設定で登録）<input data-lf="company" list="companyList" value="${esc(l.company)}" placeholder="〇〇リース"></label>
@@ -769,18 +808,38 @@
           <label>回送費（円・往復）<input data-lf="transport" type="number" min="0" value="${esc(l.transport)}"></label>
           <label>その他（補償料など）<input data-lf="other" type="number" min="0" value="${esc(l.other ?? '')}"></label>
         </div>
-      </div>`).join('') : '<p class="empty">この案件で借りた機械はまだありません。上の「借りた機械を追加」から選んでください。</p>';
+      </div>`).join('') : '<p class="empty">この現場で借りた機械はまだありません。上の「借りた機械を追加」から選んでください。</p>';
+    const incoming = leaseShares(c).filter((x) => x.owner.id !== c.id);
+    if (incoming.length) $('#leaseList').innerHTML += `<h3 class="in-title">ほかの現場から移ってきた機械</h3>` + incoming.map((x) => `
+      <div class="mcard incoming"><div class="mhead"><b>${esc(x.l.name || '（名前なし）')}</b><span class="flex1"></span><button type="button" class="link" data-openowner="${x.owner.id}">${esc(caseName(x.owner))}で直す ›</button></div>
+        <div class="lsum"><span>この現場 <b>${x.days}日</b>${x.here ? '（今ここで使用中）' : ''}</span><span>この現場の分 <b>¥${yen(x.cost)}</b></span></div>${movesHtml(x.l, x.owner)}</div>`).join('');
     $('#companyList').innerHTML = (state.settings.leaseCompanies || []).filter((x) => x.name).map((x) => `<option value="${esc(x.name)}">${closeLabel(x.close)}締め</option>`).join('');
     const ps = state.settings.leasePresets || [];
     $('#leasePreset').innerHTML = ps.map((p, i) => `<option value="${i}">${esc(p.name)}（日額¥${yen(p.daily)}／月極¥${yen(p.monthly)}／${num(p.th) + 1}日目から月極）</option>`).join('') + '<option value="custom">その他（自分で入力）</option>';
   }
+  // 使った現場（期間・日数・この現場の分）と、別の現場へ移す
+  function movesHtml(l, c) {
+    const a = leaseAlloc(l, c), others = state.cases.filter((x) => x.id !== c.id);
+    const list = a.iv.map((x) => { const o = a.out[x.caseId] || {}; const cc = state.cases.find((y) => y.id === x.caseId);
+      return `<li><span class="mv-site ${x.caseId === c.id ? 'me' : ''}">${esc(cc ? caseName(cc) : '？')}</span><span class="mv-when">${md(isoOf(x.from))}〜${x.to >= today() && !l.end ? '今' : md(isoOf(x.to))}（${dCount(x.from, x.to)}日）</span>${x.mid ? `<button type="button" class="mv-del" data-mvdel="${x.mid}" data-lid2="${l.id}" aria-label="この移動を取り消す">×</button>` : ''}</li>`; }).join('');
+    const multi = a.iv.length > 1;
+    return `<div class="moves">
+      <div class="mv-title">使った現場${multi ? `<small>リース代は現場ごとにいた日数で分けます</small>` : ''}</div>
+      ${l.start ? `<ul class="mv-list">${list}</ul>` : ''}
+      ${multi ? `<div class="mv-split">${Object.entries(a.out).map(([id, o]) => { const cc = state.cases.find((y) => y.id === id); return `<span>${esc(cc ? caseName(cc) : '？')}：${o.days}日・¥${yen(o.cost)}</span>`; }).join('')}</div>` : ''}
+      ${others.length && l.start ? `<details class="mv-add"><summary>別の現場へ移した</summary>
+        <div class="mv-row"><label>移した現場<select data-mvcase>${others.map((x) => `<option value="${x.id}">${esc(caseName(x))}</option>`).join('')}</select></label>
+        <label>移した日<input type="date" data-mvdate value="${todayIso()}" min="${esc(l.start)}"></label>
+        <button type="button" class="btn go" data-mvadd="${l.id}">この日から移した</button></div></details>` : ''}
+    </div>`;
+  }
   function renderLeaseTotal(c) {
-    const ls = leasesOf(c);
-    const rows = ls.map((l) => { const r = leaseCalc(l); return `<tr><td>${esc(l.name)}</td><td class="num">${r.days}日</td><td>${r.days ? r.summary : '—'}</td><td class="num">¥${yen(r.cost)}</td></tr>`; }).join('');
+    const items = leaseShares(c), ls = items;
+    const rows = items.map((x) => `<tr><td>${esc(x.l.name)}${x.owner.id !== c.id ? `<div class="sub">${esc(caseName(x.owner))}から移ってきた機械</div>` : ''}</td><td class="num">${x.days}日</td><td>${x.r.days ? (x.iv.length > 1 ? `全体${x.r.days}日のうち${x.days}日分` : x.r.summary) : '—'}</td><td class="num">¥${yen(x.cost)}</td></tr>`).join('');
     const total = leaseSummary(c).total;
     $('#leaseTotal').innerHTML = ls.length ? `
-      <h2>リース代の合計</h2>
-      <div class="table-wrap"><table class="cost wide"><thead><tr><th>機械</th><th class="num">使用日数</th><th>計算</th><th class="num">リース代（回送費込み）</th></tr></thead><tbody>${rows}</tbody>
+      <h2>この現場のリース代</h2>
+      <div class="table-wrap"><table class="cost wide"><thead><tr><th>機械</th><th class="num">この現場の日数</th><th>計算</th><th class="num">リース代（回送費込み）</th></tr></thead><tbody>${rows}</tbody>
         <tfoot><tr><th colspan="3">合計</th><td class="num"><b>¥${yen(total)}</b></td></tr></tfoot></table></div>
       <p class="hint">月極の区切り：${LEASE_MODES[state.settings.leaseMode] || LEASE_MODES.calendar}（「設定」で変更できます）。締めごとに、使った日数が決めた日数を超えたら月極、超えなければ日割りで計算します。</p>` : '';
   }
@@ -836,7 +895,7 @@
     const tot = { disp: 0, lease: 0 }; EXPENSE_CATS.forEach((k) => { tot[k] = 0; });
     const rows = state.cases.map((c) => {
       const r = { disp: manifestsOf(c).filter((m) => m.date && billOf(m).ym === mon).reduce((a, m) => a + dispOf(m), 0),
-        lease: leasesOf(c).reduce((a, l) => a + (leaseByMonth(l)[mon] || 0), 0) };
+        lease: leaseShares(c).reduce((a, x) => a + (x.months[mon] || 0), 0) };
       EXPENSE_CATS.forEach((k) => { r[k] = expensesOf(c).filter((x) => ym(x.date) === mon && x.cat === k).reduce((a, x) => a + num(x.amount), 0); });
       const all = r.disp + r.lease + EXPENSE_CATS.reduce((a, k) => a + r[k], 0);
       if (!all) return '';
@@ -1100,10 +1159,31 @@
           <span class="chev">›</span></button></li>`;
       }).join('') : `<li class="empty-row">${{ live: '工事中の現場はありません。', plan: 'これからの現場はありません。', done: '完了した現場はまだありません。' }[homeFilter]}</li>`}</ul>
       <button type="button" class="btn ghost wide" data-act="newcase">＋ 新しい現場を作る</button>
+      ${homeLeaseHtml()}
       <button type="button" class="fab" data-act="record">＋ 記録する</button>`;
+  }
+  // 借りている途中の機械を、今いる現場ごとに
+  function homeLeaseHtml() {
+    const groups = {};
+    state.cases.forEach((o) => leasesOf(o).forEach((l) => {
+      const a = leaseAlloc(l, o); if (!a.r.ongoing || !a.iv.length) return;
+      const at = a.iv[a.iv.length - 1].caseId; (groups[at] = groups[at] || []).push({ l, a, at });
+    }));
+    const ids = Object.keys(groups); if (!ids.length) return '';
+    let n = 0;
+    const html = ids.map((id) => {
+      const c = state.cases.find((x) => x.id === id), list = groups[id];
+      const siteTotal = Math.round(leaseShares(c).reduce((s2, x) => s2 + x.cost, 0)); n += list.length;
+      return `<li><button type="button" class="row" data-lease-open="${id}"><span class="r-main"><span class="r-title">${esc(caseName(c))}</span>
+        <span class="r-sub">${list.map(({ l, a }) => `${esc(l.name || '機械')}（${a.r.state === 'soon' ? `月極まで${a.r.toSwitch}日` : a.r.paidUntil ? '月極' : `${a.r.days}日目`}）`).join('・')}</span></span>
+        <span class="r-num"><b>¥${yen(siteTotal)}</b><span class="r-sub">この現場のリース代</span></span><span class="chev">›</span></button></li>`;
+    }).join('');
+    const soon = ids.reduce((a, id) => a + groups[id].filter((x) => x.a.r.state === 'soon').length, 0);
+    return `<p class="sec-label">リース中の機械（${n}台）${soon ? `<span class="rc soon">月極が近い ${soon}台</span>` : ''}</p><ul class="rows">${html}</ul>`;
   }
   $('#homeOut').addEventListener('click', (e) => {
     if (e.target.closest('[data-alerts]')) { alertsOpen = !alertsOpen; renderHome(); return; }
+    const lo = e.target.closest('[data-lease-open]'); if (lo) { openCase(lo.dataset.leaseOpen, 'money'); go('lease'); return; }
     const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'summary'); return; }
     const hf = e.target.closest('[data-hf]'); if (hf) { homeFilter = hf.dataset.hf; homeFilterSet = true; try { localStorage.setItem('kaitai-jimu-homefilter', homeFilter); } catch (_) { /* noop */ } renderHome(); return; }
     const act = e.target.closest('[data-act]'); if (!act) return;
@@ -1358,6 +1438,7 @@
         <div class="m3"><div><span>見積（税抜）</span><b>¥${yen(est)}</b></div><div><span>かかった</span><b>¥${yen(spent)}</b></div><div><span>残り（見込み）</span><b class="${remain < 0 ? 'neg' : 'pos'}">${remain < 0 ? '−' : ''}¥${yen(Math.abs(remain))}</b></div></div>
         ${est ? `<div class="pbar"><i class="${pct >= 90 ? 'bad' : pct >= 70 ? 'mid' : ''}" style="width:${pct}%"></i></div><p class="lab">見積の${pct}%を使っています（処分代 ¥${yen(disp)}・経費 ¥${yen(ex)}・リース ¥${yen(ls)}）</p>` : '<p class="lab">延床面積を入れると見積が出ます</p>'}
       </section>
+      ${leaseCardHtml(c)}
       <section class="card tap" data-go="manifest">
         <div class="ct">処分<small>${last ? `最後：${md(last.date)} ${esc((WT[last.type] || {}).name || '')} ${qtyText(last)} ›` : 'まだ記録がありません ›'}</small></div>
         <div class="pc-row"><span class="big">${Math.round(tt * 100) / 100}t</span><span class="big">¥${yen(dispSummary(c).total)}</span></div>
@@ -1369,6 +1450,17 @@
           <span class="il-t">${title}${miss ? '<em>未入力あり</em>' : ''}</span><span class="il-v">${esc(v) || '<span class="mut">まだ入っていません</span>'}</span><span class="chev">›</span></button></li>`; }).join('')}</ul>
       </section>
       <div class="danger-zone"><button type="button" class="btn ghost" data-act="del">この現場を削除する</button></div>`;
+  }
+  function leaseCardHtml(c) {
+    const it = leaseShares(c), total = Math.round(it.reduce((a, x) => a + x.cost, 0));
+    const badge = (x) => { const r = x.r; if (!x.here) return x.l.end ? '<span class="bd">返却済み</span>' : '<span class="bd">ほかの現場へ移動</span>';
+      if (r.state === 'soon') return `<span class="bd soon">月極まで あと${r.toSwitch}日</span>`; if (r.paidUntil) return '<span class="bd ok">月極</span>'; return '<span class="bd">日割り</span>'; };
+    return `<section class="card tap" data-go="lease">
+      <div class="ct">リース<small>${it.length ? `${it.filter((x) => x.here).length}台 使用中・今日まで ›` : '›'}</small></div>
+      ${it.length ? `<ul class="lease-mini">${it.map((x) => `<li><span class="lm-n">${esc(x.l.name || '（名前なし）')}<small>${x.days}日${x.owner.id !== c.id ? '・移ってきた機械' : x.iv.length > 1 ? '・途中で移動' : ''}</small></span>${badge(x)}<b>¥${yen(x.cost)}</b></li>`).join('')}</ul>
+        <div class="pc-row lm-total"><span>この現場のリース代</span><b>¥${yen(total)}</b></div>` : '<p class="lab">この現場で借りている機械はありません。</p>'}
+      <button type="button" class="btn ghost wide lm-add" data-act="lease">＋ 借りた機械を足す</button>
+    </section>`;
   }
   $('#summaryOut').addEventListener('click', (e) => {
     const c = cur(); let b;
@@ -1385,6 +1477,7 @@
       if (a === 'exp') openExp();
       if (a === 'est') go('estimate');
       if (a === 'del') $('#deleteCase').click();
+      if (a === 'lease') { go('lease'); setTimeout(() => { $('#leasePreset')?.scrollIntoView({ block: 'center' }); $('#leasePreset')?.focus(); }, 80); }
       return;
     }
     if ((b = e.target.closest('[data-go]'))) { go(b.dataset.go); }
@@ -1539,6 +1632,18 @@
   });
   const leaseDelArmed = {};
   $('#leaseList').addEventListener('click', (e) => {
+    const ow = e.target.closest('[data-openowner]'); if (ow) { openCase(ow.dataset.openowner, 'money'); go('lease'); return; }
+    const add = e.target.closest('[data-mvadd]');
+    if (add) {
+      const box = add.closest('.mv-add'), to = box.querySelector('[data-mvcase]').value, date = box.querySelector('[data-mvdate]').value;
+      const all = state.cases.flatMap((x) => leasesOf(x)), l = all.find((x) => x.id === add.dataset.mvadd); if (!l || !to || !date) return;
+      if (date <= l.start) { toast('借りた日より後の日を選んでください'); return; }
+      if (l.end && date > l.end) { toast('返した日より前の日を選んでください'); return; }
+      l.moves = (l.moves || []).filter((m) => m.date !== date).concat({ id: uid(), date, caseId: to }); save(); renderAll();
+      toast(`${md(date)}から「${caseName(state.cases.find((x) => x.id === to))}」へ移しました`); return;
+    }
+    const del = e.target.closest('[data-mvdel]');
+    if (del) { const l = state.cases.flatMap((x) => leasesOf(x)).find((x) => x.id === del.dataset.lid2); if (l) { l.moves = (l.moves || []).filter((m) => m.id !== del.dataset.mvdel); save(); renderAll(); } return; }
     const b = e.target.closest('[data-ldel]'); if (!b) return;
     const id = b.dataset.ldel;
     if (!leaseDelArmed[id]) { b.textContent = 'もう一度押すと削除'; leaseDelArmed[id] = setTimeout(() => { b.textContent = '削除'; delete leaseDelArmed[id]; }, 3000); return; }
