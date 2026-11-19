@@ -443,5 +443,9 @@
 <script src="app.js"></script>
 <script src="cloud.js"></script>
 <script src="pdf.js"></script>
+<script>
+  // 電波がなくても開けるように（https のときだけ）
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
 </body>
 </html>

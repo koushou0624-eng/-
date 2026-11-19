@@ -408,9 +408,49 @@
     return `【カイタイ事務】${now.getMonth() + 1}月${now.getDate()}日の注意 ${n}件\n` + sec('リース', a.lease) + sec('マニフェスト', a.manifest) + sec('届出・挨拶', a.schedule);
   }
 
+  // ---------- 2人が同時に直したときの合わせ方（前回そろえた内容 base と、自分 local・相手 remote を比べる） ----------
+  // ・片方だけが変えた所はその変更を使う ・id のある一覧（記録・経費・リースなど）は1件ずつ合わせる（両方の追加を残す）
+  // ・同じ所を両方が変えたときだけ、自分（local）を優先
+  const stableJ = (v) => (Array.isArray(v) ? '[' + v.map(stableJ).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => JSON.stringify(k) + ':' + stableJ(v[k])).join(',') + '}' : JSON.stringify(v === undefined ? null : v));
+  const same = (a, b) => stableJ(a) === stableJ(b);
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const isIdList = (v) => Array.isArray(v) && v.length > 0 && v.every((x) => isObj(x) && x.id != null);
+  function mergeList(b, l, r) {
+    const by = (arr) => new Map((arr || []).map((x) => [String(x.id), x]));
+    const B = by(b), L = by(l), R = by(r), out = [], seen = new Set();
+    const pick = (id) => {
+      if (seen.has(id)) return; seen.add(id);
+      const inB = B.has(id), inL = L.has(id), inR = R.has(id);
+      if (inL && inR) out.push(merge3(B.get(id), L.get(id), R.get(id)));
+      else if (inL) { if (!inB || !same(L.get(id), B.get(id))) out.push(L.get(id)); } // 相手が消した：自分が直していなければ消す
+      else if (inR) { if (!inB || !same(R.get(id), B.get(id))) out.push(R.get(id)); } // 自分が消した：相手が直していなければ消す
+    };
+    (r || []).forEach((x) => pick(String(x.id)));
+    (l || []).forEach((x) => pick(String(x.id)));
+    // 並び順：自分の並びを基本に、相手だけが足したものはその後ろ
+    const lo = new Map((l || []).map((x, k) => [String(x.id), k]));
+    return out.sort((x, y) => (lo.has(String(x.id)) ? lo.get(String(x.id)) : 1e9) - (lo.has(String(y.id)) ? lo.get(String(y.id)) : 1e9));
+  }
+  function merge3(b, l, r) {
+    if (same(l, r)) return l;
+    if (b !== undefined && same(l, b)) return r;
+    if (b !== undefined && same(r, b)) return l;
+    if (isIdList(l) || isIdList(r) || (isIdList(b) && Array.isArray(l) && Array.isArray(r))) return mergeList(b, l, r);
+    if (isObj(l) && isObj(r)) {
+      const out = {}, bb = isObj(b) ? b : {};
+      new Set([...Object.keys(l), ...Object.keys(r)]).forEach((k) => {
+        if (!(k in l)) { if (k in bb && same(r[k], bb[k])) return; out[k] = r[k]; return; }
+        if (!(k in r)) { if (k in bb && same(l[k], bb[k])) return; out[k] = l[k]; return; }
+        out[k] = merge3(bb[k], l[k], r[k]);
+      });
+      return out;
+    }
+    return l;
+  }
+
   const api = {
     num, yen, isoOf, addDays, fmtDate, todayOf,
-    WASTE_TYPES, WT, setCustomTypes, plus3BizDays, manifestChecks,
+    WASTE_TYPES, WT, setCustomTypes, plus3BizDays, manifestChecks, merge3,
     LEASE_MODES, lastOfMonth, addMonthsClamp, companyOf, closeOf, closeLabel, closeDate, segEnd, dayCount, mLabel, leaseCalc,
     caseName, collectAlerts, alertMessage,
     kana, parseRecord, manifestFromRecord, recordReply, askReply, priceFor, priceInfo, costOf, caseLabel, LINE_HELP, ticketToText, TICKET_PROMPT,

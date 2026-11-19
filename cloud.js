@@ -19,7 +19,8 @@
   }
 
   let meta = loadMeta(); // { userId, lastPull, synced: { 'kind:id': 内容 } }
-  let user = null, company = null, pushTimer = null, pushing = false, again = false, pulling = false;
+  let user = null, company = null, pushTimer = null, pushing = false, again = false, pulling = false, lastMerged = 0, offlineMode = false, retryCompany = 0;
+  const parseJ = (j) => { try { return j === undefined ? undefined : JSON.parse(j); } catch (_) { return undefined; } };
 
   function loadMeta() { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || { synced: {} }; } catch (_) { return { synced: {} }; } }
   function saveMeta() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(meta)); } catch (_) { /* noop */ } }
@@ -34,17 +35,6 @@
     const out = { 'settings:main': { kind: 'settings', id: 'main', data: state.settings } };
     state.cases.forEach((c) => { out['case:' + c.id] = { kind: 'case', id: c.id, data: c }; });
     return out;
-  }
-
-  // LINE から入ったマニフェストのうち、この端末にまだないもの（前回の同期以降に増えたもの）を足す
-  function mergeLine(localCase, remoteCase, syncedJ) {
-    let known = new Set();
-    try { known = new Set(((JSON.parse(syncedJ || 'null') || {}).manifests || []).map((m) => m.id)); } catch (_) { /* noop */ }
-    const have = new Set((localCase.manifests || []).map((m) => m.id));
-    const add = (remoteCase.manifests || []).filter((m) => m.via === 'line' && !have.has(m.id) && !known.has(m.id));
-    if (!add.length) return false;
-    localCase.manifests = (localCase.manifests || []).concat(add);
-    return true;
   }
 
   // ---------- 送る ----------
@@ -64,21 +54,33 @@
         const i = k.indexOf(':');
         rows.push({ k, del: true, row: { company_id: company.id, kind: k.slice(0, i), id: k.slice(i + 1), data: {}, deleted: true } });
       });
-      // 送る前に：送ろうとしている現場に、LINE から新しい記録が入っていないか確かめて取り込む
-      const caseIds = rows.filter((r) => !r.del && r.row.kind === 'case').map((r) => r.row.id);
-      if (caseIds.length) {
-        const { data: remote } = await sb.from('kj_docs').select('id,data,updated_at').eq('company_id', company.id).eq('kind', 'case').in('id', caseIds);
-        let merged = false;
-        const st = KJApp.getState();
-        (remote || []).forEach((rc) => {
-          const lc = st.cases.find((c) => c.id === rc.id);
-          if (lc && mergeLine(lc, rc.data, meta.synced['case:' + rc.id])) merged = true;
+      // 送る前に：送ろうとしている現場・設定を、ほかの人（LINE も）が変えていないか確かめ、変えていたら合わせる
+      const want = rows.filter((r) => !r.del);
+      if (want.length) {
+        const caseIds = want.filter((r) => r.row.kind === 'case').map((r) => r.row.id);
+        const reqs = [];
+        if (caseIds.length) reqs.push(sb.from('kj_docs').select('kind,id,data,deleted').eq('company_id', company.id).eq('kind', 'case').in('id', caseIds));
+        if (want.some((r) => r.row.kind === 'settings')) reqs.push(sb.from('kj_docs').select('kind,id,data,deleted').eq('company_id', company.id).eq('kind', 'settings').eq('id', 'main'));
+        const res = await Promise.all(reqs);
+        res.forEach((x) => { if (x.error) throw x.error; });
+        const remote = res.flatMap((x) => x.data || []);
+        const st = KJApp.getState(); let merged = 0;
+        remote.forEach((rc) => {
+          if (rc.deleted) return; // 相手が消した現場を、こちらで直していた → こちらを残す
+          const k = rc.kind + ':' + rc.id, rj = stable(rc.data);
+          if (rj === meta.synced[k]) return; // 前回から誰も変えていない
+          const local = docsOf(st)[k]; if (!local) return;
+          const out = KJCore.merge3(parseJ(meta.synced[k]), local.data, rc.data);
+          if (stable(out) !== stable(local.data)) merged++;
+          if (rc.kind === 'settings') st.settings = out; else { const i = st.cases.findIndex((c) => c.id === rc.id); if (i >= 0) st.cases[i] = out; }
+          meta.synced[k] = rj; // 合わせた後は、相手の内容を「前回」とする
         });
         if (merged) {
           KJApp.replaceState(JSON.parse(JSON.stringify(st)));
-          const fresh = docsOf(KJApp.getState());
-          rows.forEach((r) => { if (!r.del && fresh[r.k]) { r.row.data = fresh[r.k].data; r.j = stable(fresh[r.k].data); } });
+          lastMerged = merged;
         }
+        const fresh = docsOf(KJApp.getState());
+        rows.forEach((r) => { if (!r.del && fresh[r.k]) { r.row.data = fresh[r.k].data; r.j = stable(fresh[r.k].data); } });
       }
       if (rows.length) {
         status('保存中…', 'busy');
@@ -87,10 +89,10 @@
         rows.forEach((r) => { if (r.del) delete meta.synced[r.k]; else meta.synced[r.k] = r.j; });
         saveMeta();
       }
-      status('☁ 保存済み', 'ok');
+      status(lastMerged ? '☁ 保存済み（ほかの人の変更と合わせました）' : '☁ 保存済み', 'ok'); lastMerged = 0;
     } catch (e) {
       console.warn('push failed', e);
-      status('⚠ 未送信（つながったら自動で送ります）', 'err');
+      status(navigator.onLine ? '⚠ 未送信（あとで自動で送ります）' : '⚠ オフライン（入力はこの端末に保存。つながったら送ります）', 'err');
       setTimeout(schedulePush, 30000);
     } finally {
       pushing = false;
@@ -147,8 +149,15 @@
           // この端末でまだ送っていない変更がある → この端末を優先（あとで送る）
           const untouched = local ? localJ === meta.synced[k] : !(k in meta.synced);
           if (!untouched) {
-            // この端末で編集中でも、LINE から入った記録は取り込む（送るときに一緒に送る）
-            if (local && r.kind === 'case' && !r.deleted && mergeLine(local.data, r.data, meta.synced[k])) changed = true;
+            // この端末で直していて、まだ送っていない：相手の変更と合わせる（こちらの変更は次に送る）
+            if (local && !r.deleted) {
+              const out = KJCore.merge3(parseJ(meta.synced[k]), local.data, r.data);
+              if (stable(out) !== localJ) {
+                if (r.kind === 'settings') next.settings = out; else { const i = next.cases.findIndex((c) => c.id === r.id); if (i >= 0) next.cases[i] = out; }
+                changed = true;
+              }
+              meta.synced[k] = remoteJ;
+            }
             return;
           }
           if (r.deleted) {
@@ -233,7 +242,10 @@
       if (migrated) await push(); // 引っ越し中に送れなかった入力があれば送る
     } catch (e) {
       console.warn('company failed', e);
-      status('⚠ オフライン', 'err');
+      // つながらない：前に使っていた会社のまま、この端末で入力を続ける（あとでつながったら送る）
+      if (!company && meta.companyId) company = { id: meta.companyId };
+      status('⚠ オフライン（入力はこの端末に保存。つながったら送ります）', 'err');
+      clearTimeout(retryCompany); retryCompany = setTimeout(() => { if (user) chooseCompany(); }, 30000);
     }
   }
   function alertBox(msg) { const el = $('#companyError'); el.textContent = msg; }
@@ -441,11 +453,24 @@
   const typing = () => { const a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); else if (user) push(); });
   window.addEventListener('focus', () => pull());
-  window.addEventListener('online', () => { push(); pull(); });
+  window.addEventListener('online', () => { if (!offlineMode) { push(); pull(); } });
+  window.addEventListener('offline', () => status('⚠ オフライン（入力はこの端末に保存。つながったら送ります）', 'err'));
   setInterval(() => { if (!typing()) pull(); }, 2 * 60 * 1000);
 
-  (async () => {
-    const { data } = await sb.auth.getSession();
-    if (data.session) onLogin(data.session.user); else showLogin();
-  })();
+  function storedSession() { try { const v = JSON.parse(localStorage.getItem('kaitai-jimu-auth')); return v && v.user ? v : null; } catch (_) { return null; } }
+  async function start() {
+    let session = null, failed = false;
+    try { const { data, error } = await sb.auth.getSession(); session = data && data.session; if (error) failed = true; } catch (_) { failed = true; }
+    if (session) { offlineMode = false; onLogin(session.user); return; }
+    const saved = storedSession();
+    if (saved && (failed || !navigator.onLine)) {
+      // 電波がない：前にログインした人のまま、この端末のデータで使う（つながったら送る）
+      offlineMode = true; user = saved.user; company = meta.companyId ? { id: meta.companyId } : null;
+      hideLogin(); status('⚠ オフライン（入力はこの端末に保存。つながったら送ります）', 'err');
+      return;
+    }
+    showLogin();
+  }
+  window.addEventListener('online', () => { if (offlineMode) start(); });
+  start();
 })();
