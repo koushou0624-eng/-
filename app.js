@@ -1020,7 +1020,7 @@
     KJCore.setCustomTypes(state.settings.customTypes);
     const te = $('#typeEditor'); const ae = document.activeElement; if (te && !te.dataset.keep && !(te.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox')) renderTypeEditor();
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); renderSummary(c); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); renderSummary(c); renderMonthly(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -1037,7 +1037,7 @@
     lastTab[sec] = b.dataset.tab;
     try { localStorage.setItem('kaitai-jimu-nav', JSON.stringify({ sec, lastTab })); } catch (_) { /* noop */ }
     if (b.dataset.tab === 'home') renderHome();
-    if (b.dataset.tab === 'linelog') renderLineLog();
+    if (b.dataset.tab === 'linelog') renderLineLog(); if (b.dataset.tab === 'monthly') renderMonthly();
     renderSiteHead();
     window.scrollTo(0, 0);
   });
@@ -1051,12 +1051,12 @@
     info: { label: '情報', tabs: ['input', 'schedule'], hidden: true },
   };
   const SECTIONS = {
-    home: ['home'],
+    home: ['home', 'monthly'],
     site: [].concat(...Object.values(GROUPS).map((g) => g.tabs)),
     line: ['linelog'],
     settings: ['settings'],
   };
-  const TAB_LABELS = { summary: 'まとめ', input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム', linelog: 'LINEの記録' };
+  const TAB_LABELS = { monthly: '月ごとのお金', summary: 'まとめ', input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム', linelog: 'LINEの記録' };
   const secOf = (tab) => Object.keys(SECTIONS).find((k) => SECTIONS[k].includes(tab)) || 'home';
   const groupOf = (tab) => Object.keys(GROUPS).find((g) => GROUPS[g].tabs.includes(tab));
   let curSec = 'home';
@@ -1066,7 +1066,7 @@
     curSec = sec;
     $$('#mainNav button').forEach((b) => b.classList.toggle('active', b.dataset.sec === (sec === 'site' ? 'home' : sec)));
     document.body.dataset.section = sec;
-    if (openTab) { const tabs = SECTIONS[sec]; const t = lastTab[sec] && tabs.includes(lastTab[sec]) ? lastTab[sec] : tabs[0]; $(`#tabs button[data-tab="${t}"]`).click(); }
+    if (openTab) { const tabs = SECTIONS[sec]; const t = sec === 'home' ? 'home' : lastTab[sec] && tabs.includes(lastTab[sec]) ? lastTab[sec] : tabs[0]; $(`#tabs button[data-tab="${t}"]`).click(); }
     renderSiteHead();
   }
   $('#mainNav').addEventListener('click', (e) => { const b = e.target.closest('[data-sec]'); if (b) setSection(b.dataset.sec); });
@@ -1145,7 +1145,7 @@
     $('#homeOut').innerHTML = `
       <section class="hero">
         <div class="hero-top"><span class="hero-hello">${hello}</span><span class="hero-date">${now.getMonth() + 1}月${now.getDate()}日（${wd}）</span></div>
-        <div class="hero-main"><span class="hero-lab">${now.getMonth() + 1}月の処分代</span><b class="hero-big">¥${yen(allY)}</b></div>
+        <button type="button" class="hero-main" data-act="monthly"><span class="hero-lab">${now.getMonth() + 1}月の処分代</span><b class="hero-big">¥${yen(allY)}</b><span class="hero-link">現場ごとに見る ›</span></button>
         <div class="hero-grid"><div><span>処分した量</span><b>${tTxt(allT)}</b></div><div><span>工事中の現場</span><b>${liveN}<small>件</small></b></div><div><span>全部の現場</span><b>${cases.length}<small>件</small></b></div></div>
       </section>
       ${alerts.length ? `<button type="button" class="alert-pill" data-alerts><span>⚠ 注意が ${alerts.length}件 あります</span><span>${alertsOpen ? '閉じる' : '見る ›'}</span></button>
@@ -1189,6 +1189,7 @@
     const hf = e.target.closest('[data-hf]'); if (hf) { homeFilter = hf.dataset.hf; homeFilterSet = true; try { localStorage.setItem('kaitai-jimu-homefilter', homeFilter); } catch (_) { /* noop */ } renderHome(); return; }
     const act = e.target.closest('[data-act]'); if (!act) return;
     if (act.dataset.act === 'newcase') openCaseSheet();
+    if (act.dataset.act === 'monthly') { monthlyYm = todayIso().slice(0, 7); go('monthly'); }
     if (act.dataset.act === 'record') {
       const live = state.cases.filter((c) => caseStatus(c)[0] === 'live');
       openRec((live.find((c) => c.id === state.currentId) || live[0] || cur()).id);
@@ -1359,6 +1360,65 @@
     toast(`「${caseName(c)}」を作りました`);
   });
 
+
+  // ---------- 月ごとのお金（現場ごと） ----------
+  let monthlyYm = null, monthlyKey = 'disp';
+  function monthData(ym) {
+    const rows = state.cases.map((c) => {
+      const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m) && String(m.date || '').slice(0, 7) === ym);
+      const disp = ms.reduce((a, m) => a + dispOf(m), 0), t = ms.filter((m) => qUnitOf(m) !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+      const exp = expensesOf(c).filter((x) => String(x.date || '').slice(0, 7) === ym).reduce((a, x) => a + num(x.amount), 0);
+      const lease = leaseShares(c).reduce((a, x) => a + (x.months[ym] || 0), 0);
+      return { c, disp: Math.round(disp), exp: Math.round(exp), lease: Math.round(lease), t, n: ms.length, total: Math.round(disp + exp + lease) };
+    }).filter((r) => r.total > 0 || r.n > 0);
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    return { rows, disp: sum('disp'), exp: sum('exp'), lease: sum('lease'), total: sum('total'), t: sum('t') };
+  }
+  function monthsWithData() {
+    const set = new Set([todayIso().slice(0, 7)]);
+    state.cases.forEach((c) => {
+      manifestsOf(c).forEach((m) => m.date && set.add(m.date.slice(0, 7)));
+      expensesOf(c).forEach((x) => x.date && set.add(x.date.slice(0, 7)));
+      leaseShares(c).forEach((x) => Object.keys(x.months).forEach((k) => set.add(k)));
+    });
+    return [...set].sort();
+  }
+  function renderMonthly() {
+    const box = $('#monthlyOut'); if (!box || curSec !== 'home') return;
+    const months = monthsWithData(); if (!monthlyYm || !months.includes(monthlyYm)) monthlyYm = months[months.length - 1];
+    const i = months.indexOf(monthlyYm), d = monthData(monthlyYm);
+    const [y, mo] = monthlyYm.split('-').map(Number);
+    const KEYS = [['disp', '処分代'], ['exp', '経費'], ['lease', 'リース'], ['total', '合計']];
+    const rows = d.rows.slice().sort((a, b) => b[monthlyKey] - a[monthlyKey] || b.total - a.total);
+    const max = Math.max(1, ...rows.map((r) => r[monthlyKey]));
+    box.innerHTML = `
+      <button type="button" class="back" data-mgo="home">‹ ホーム</button>
+      <div class="mon-nav">
+        <button type="button" class="mon-arrow" data-mym="${months[i - 1] || ''}" ${i > 0 ? '' : 'disabled'} aria-label="前の月">‹</button>
+        <h1 class="mon-title">${y}年${mo}月<small>のお金（現場ごと）</small></h1>
+        <button type="button" class="mon-arrow" data-mym="${months[i + 1] || ''}" ${i < months.length - 1 ? '' : 'disabled'} aria-label="次の月">›</button>
+      </div>
+      <section class="mon-sum">
+        <div class="ms-total"><span>全部の現場の合計</span><b>¥${yen(d.total)}</b></div>
+        <div class="ms-grid"><div><span>処分代</span><b>¥${yen(d.disp)}</b><small>${tTxt(d.t)}</small></div><div><span>経費</span><b>¥${yen(d.exp)}</b></div><div><span>リース</span><b>¥${yen(d.lease)}</b></div></div>
+      </section>
+      <div class="seg4 mon-seg">${KEYS.map(([k, l]) => `<button type="button" data-mkey="${k}" class="${k === monthlyKey ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <p class="sec-label">${KEYS.find((x) => x[0] === monthlyKey)[1]}が多い順</p>
+      ${rows.length ? `<ul class="rows mon-rows">${rows.map((r) => `<li><button type="button" class="mrow" data-mopen="${r.c.id}">
+        <span class="mr-top"><span class="mr-name">${esc(caseName(r.c))}<small>${esc(r.c.siteAddress || '')}</small></span><b>¥${yen(r[monthlyKey])}</b><span class="chev">›</span></span>
+        <span class="pbar"><i style="width:${Math.round(r[monthlyKey] / max * 100)}%"></i></span>
+        <span class="mon-break"><span class="${monthlyKey === 'disp' ? 'on' : ''}">処分 ¥${yen(r.disp)}${r.t ? `（${tTxt(r.t)}）` : ''}</span><span class="${monthlyKey === 'exp' ? 'on' : ''}">経費 ¥${yen(r.exp)}</span><span class="${monthlyKey === 'lease' ? 'on' : ''}">リース ¥${yen(r.lease)}</span>${monthlyKey !== 'total' ? `<span class="mr-total">合計 ¥${yen(r.total)}</span>` : ''}</span>
+      </button></li>`).join('')}</ul>`
+        : '<p class="empty-row card">この月の記録はまだありません。</p>'}
+      <p class="hint">処分代は捨てた日、経費は使った日、リースはリース会社の締めの月で数えています。現場を押すと、その現場のまとめが開きます。</p>`;
+  }
+  $('#monthlyOut').addEventListener('click', (e) => {
+    let b;
+    if ((b = e.target.closest('[data-mym]'))) { if (b.dataset.mym) { monthlyYm = b.dataset.mym; renderMonthly(); } return; }
+    if ((b = e.target.closest('[data-mkey]'))) { monthlyKey = b.dataset.mkey; renderMonthly(); return; }
+    if ((b = e.target.closest('[data-mopen]'))) { openCase(b.dataset.mopen, 'summary'); return; }
+    if (e.target.closest('[data-mgo]')) go('home');
+  });
 
   // ---------- 現場の「まとめ」 ----------
   const dayMs = 86400000;

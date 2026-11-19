@@ -766,3 +766,47 @@ input.tr-name { min-height: 42px; margin: 0; padding: 6px 10px; }
 #trashBox .tr-top .btn, #backupBox .tr-top .btn { flex: none; }
 .danger-t { color: var(--bad); }
 #backupBox .tr-top { flex-wrap: wrap; }
+
+/* ===== 月ごとのお金（現場ごと） ===== */
+button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin: 14px 0; position: relative; }
+.hero-link { font-size: 13px; font-weight: 700; color: var(--go); margin-top: 2px; }
+.mon-nav { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; margin: 4px 0 12px; }
+.mon-title { margin: 0; text-align: center; font-size: 24px; }
+.mon-title small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+.mon-arrow { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--panel); font-size: 22px; color: var(--ink); cursor: pointer; }
+.mon-arrow:disabled { opacity: .3; cursor: default; }
+.mon-sum { background: var(--brand); color: var(--brand-ink); border-radius: 18px; padding: 16px; margin-bottom: 14px; }
+.ms-total { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ms-total span { font-size: 13px; opacity: .85; }
+.ms-total b { font-size: 30px; font-variant-numeric: tabular-nums; }
+.ms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 12px; background: rgba(255,255,255,.15); border-radius: 12px; overflow: hidden; }
+.ms-grid > div { background: rgba(0,0,0,.14); padding: 9px 10px; display: grid; gap: 1px; min-width: 0; }
+.ms-grid span { font-size: 11px; opacity: .8; }
+.ms-grid b { font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ms-grid small { font-size: 11px; opacity: .8; }
+.mon-seg { margin-bottom: 4px; }
+.mon-rows .row { align-items: flex-start; }
+.mon-rows .r-title { flex-wrap: wrap; }
+.mon-rows .r-title .mut { font-size: 12px; font-weight: 400; }
+.mon-rows .pbar { margin: 6px 0 4px; height: 9px; }
+.mon-break { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.mon-break .on { color: var(--ink); font-weight: 700; }
+.mon-rows .r-num b { font-size: 18px; }
+.mon-rows .chev { margin-top: 10px; }
+
+.ms-grid { grid-template-columns: 1fr; gap: 0; background: rgba(0,0,0,.14); }
+.ms-grid > div { background: none; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 9px 14px; border-top: 1px solid rgba(255,255,255,.12); }
+.ms-grid > div:first-child { border-top: 0; }
+.ms-grid span { font-size: 13px; }
+.ms-grid b { font-size: 18px; margin-left: auto; }
+.ms-grid small { order: 3; min-width: 52px; text-align: right; }
+.mrow { width: 100%; display: grid; gap: 7px; padding: 14px 16px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.mrow:active { background: var(--soft); }
+.mr-top { display: flex; align-items: baseline; gap: 10px; }
+.mr-name { flex: 1; min-width: 0; font-size: 17px; font-weight: 700; }
+.mr-name small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.mr-top b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.mr-top .chev { align-self: center; }
+.mrow .pbar { height: 10px; }
+.mon-break { gap: 4px 12px; }
+.mr-total { margin-left: auto; color: var(--ink); }
