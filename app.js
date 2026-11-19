@@ -926,7 +926,7 @@
 
   function renderAll() {
     const c = cur(), s = state.settings;
-    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
+    renderCaseSelect(); renderSchedule(c); renderEstimate(c, s); renderProfit(c, s); renderProcess(c, s); renderManifest(c); renderExpense(c); renderLease(c); renderWasteLog(); syncChoices(); renderSummary(c); if (curSec === 'home') renderHome(); if (curSec === 'line') renderLineLog(); renderSiteHead(); renderRecycle(c, s); renderGreeting(c, s); renderCertificate(c, s);
   }
 
   // ---------- イベント ----------
@@ -950,10 +950,11 @@
 
   // ---------- 画面の入口：ホーム（現場の一覧）→ 現場（処分・お金・書類・情報） ----------
   const GROUPS = {
+    summary: { label: 'まとめ', tabs: ['summary'] },
     waste: { label: '処分', tabs: ['manifest'] },
     money: { label: 'お金', tabs: ['profit', 'expense', 'lease'] },
     docs: { label: '書類', tabs: ['estimate', 'process', 'recycle', 'greeting', 'certificate'] },
-    info: { label: '情報', tabs: ['input', 'schedule'] },
+    info: { label: '情報', tabs: ['input', 'schedule'], hidden: true },
   };
   const SECTIONS = {
     home: ['home'],
@@ -961,7 +962,7 @@
     line: ['linelog'],
     settings: ['settings'],
   };
-  const TAB_LABELS = { input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム', linelog: 'LINEの記録' };
+  const TAB_LABELS = { summary: 'まとめ', input: '現場の情報', schedule: '期限', estimate: '見積書', process: '工程表', recycle: '届出', greeting: '挨拶文', certificate: '取毀証明', profit: '利益', expense: '経費', lease: 'リース', manifest: '処分', settings: '設定', home: 'ホーム', linelog: 'LINEの記録' };
   const secOf = (tab) => Object.keys(SECTIONS).find((k) => SECTIONS[k].includes(tab)) || 'home';
   const groupOf = (tab) => Object.keys(GROUPS).find((g) => GROUPS[g].tabs.includes(tab));
   let curSec = 'home';
@@ -977,7 +978,7 @@
   $('#mainNav').addEventListener('click', (e) => { const b = e.target.closest('[data-sec]'); if (b) setSection(b.dataset.sec); });
   const go = (tab) => { setSection(secOf(tab), false); $(`#tabs button[data-tab="${tab}"]`).click(); };
   const lastOfGroup = {};
-  function openCase(id, group = 'waste') {
+  function openCase(id, group = 'summary') {
     if (id && id !== state.currentId) { state.currentId = id; save(); fillForm(caseForm, cur()); renderAll(); }
     const tabs = GROUPS[group].tabs;
     go(lastOfGroup[group] && tabs.includes(lastOfGroup[group]) ? lastOfGroup[group] : tabs[0]);
@@ -995,7 +996,7 @@
     box.innerHTML = `<button type="button" class="back" data-back>‹ 現場の一覧</button>
       <h1 class="site-name">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</h1>
       <p class="site-sub">${esc(sub)}</p>
-      <div class="seg4">${Object.keys(GROUPS).map((k) => `<button type="button" data-group="${k}" class="${k === g ? 'on' : ''}">${GROUPS[k].label}</button>`).join('')}</div>${chips}`;
+      <div class="seg4">${Object.keys(GROUPS).filter((k) => !GROUPS[k].hidden).map((k) => `<button type="button" data-group="${k}" class="${k === g ? 'on' : ''}">${GROUPS[k].label}</button>`).join('')}</div>${chips}`;
   }
   $('#siteHead').addEventListener('click', (e) => {
     if (e.target.closest('[data-back]')) { setSection('home'); return; }
@@ -1013,6 +1014,9 @@
   const md = (iso) => (iso ? iso.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1/$2') : '');
   function caseStatus(c) {
     const t = todayIso();
+    if (c.status === 'done') return ['done', '完了'];
+    if (c.status === 'live') return ['live', '工事中'];
+    if (c.status === 'plan') return ['plan', c.startDate ? `${md(c.startDate)} 着工` : '着工前'];
     if (c.endDate && c.endDate < t) return ['done', '完了'];
     if (c.startDate && c.startDate > t) return ['plan', `${md(c.startDate)} 着工`];
     if (c.startDate) return ['live', '工事中'];
@@ -1024,6 +1028,8 @@
   };
   const tTxt = (t) => `${Math.round(t * 10) / 10}t`;
   let alertsOpen = false;
+  let homeFilter = 'live', homeFilterSet = false;
+  try { const v = localStorage.getItem('kaitai-jimu-homefilter'); if (v) { homeFilter = v; homeFilterSet = true; } } catch (_) { /* noop */ }
   function renderHome() {
     const now = today(), ym = todayIso().slice(0, 7);
     const a = KJCore.collectAlerts(state, now);
@@ -1033,6 +1039,10 @@
     const order = { live: 0, plan: 1, done: 2 };
     const cases = state.cases.slice().sort((x, y) => order[caseStatus(x)[0]] - order[caseStatus(y)[0]]);
     const allT = cases.reduce((s2, c) => s2 + monthDisp(c, ym).t, 0);
+    const cnt = { live: 0, plan: 0, done: 0 }; cases.forEach((c) => cnt[caseStatus(c)[0]]++);
+    if (!cnt[homeFilter] && !homeFilterSet) homeFilter = cnt.live ? 'live' : cnt.plan ? 'plan' : 'live';
+    const shown = cases.filter((c) => caseStatus(c)[0] === homeFilter);
+    const homeTabs = () => `<div class="htabs">${[['live', '工事中'], ['plan', 'これから'], ['done', '完了']].map(([k, l]) => `<button type="button" data-hf="${k}" class="${k === homeFilter ? 'on' : ''}">${l}<em>${cnt[k]}</em></button>`).join('')}</div>`;
     const allY = cases.reduce((s2, c) => s2 + monthDisp(c, ym).cost, 0);
     const liveN = cases.filter((c) => caseStatus(c)[0] === 'live').length;
     const hr = now.getHours(), hello = hr < 10 ? 'おはようございます' : hr < 18 ? 'おつかれさまです' : 'おつかれさまでした';
@@ -1044,19 +1054,22 @@
       </section>
       ${alerts.length ? `<button type="button" class="alert-pill" data-alerts><span>⚠ 注意が ${alerts.length}件 あります</span><span>${alertsOpen ? '閉じる' : '見る ›'}</span></button>
         ${alertsOpen ? `<ul class="alert-list">${alerts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}` : '<p class="ok-line">✓ 今日の注意はありません</p>'}
-      <p class="sec-label">現場</p>
-      <ul class="rows">${cases.map((c) => {
-        const [k, label] = caseStatus(c), d = monthDisp(c, ym);
+      ${homeTabs(cases)}
+      <ul class="rows site-rows">${shown.length ? shown.map((c) => {
+        const [k, label] = caseStatus(c), d = monthDisp(c, ym), pr = period(c), nx = nextTodo(c);
         return `<li><button type="button" class="row" data-open="${c.id}"><span class="dot ${k}"></span>
-          <span class="r-main"><span class="r-title">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</span><span class="r-sub">${esc([c.siteAddress, label].filter(Boolean).join('・'))}</span></span>
-          <span class="r-num">${d.n ? `<b>${tTxt(d.t)}</b><span class="r-sub">¥${yen(d.cost)}</span>` : '<b class="mut">—</b>'}</span><span class="chev">›</span></button></li>`;
-      }).join('')}</ul>
+          <span class="r-main"><span class="r-title">${esc(c.clientName ? c.clientName + '様邸' : '名前未入力の現場')}</span><span class="r-sub">${esc([c.siteAddress, label].filter(Boolean).join('・'))}</span>
+          ${pr && k === 'live' ? `<span class="prog"><span class="pbar"><i style="width:${pr.pct}%"></i></span><span>${pr.day}日目／${pr.total}日</span></span>` : ''}
+          <span class="rchips">${nx ? `<span class="rc ${nx.cls}">${esc(nx.title)} ${esc(nx.label)}</span>` : ''}${d.n ? `<span class="rc">処分 ${tTxt(d.t)}・¥${yen(d.cost)}</span>` : ''}</span></span>
+          <span class="chev">›</span></button></li>`;
+      }).join('') : `<li class="empty-row">${{ live: '工事中の現場はありません。', plan: 'これからの現場はありません。', done: '完了した現場はまだありません。' }[homeFilter]}</li>`}</ul>
       <button type="button" class="btn ghost wide" data-act="newcase">＋ 新しい現場を作る</button>
       <button type="button" class="fab" data-act="record">＋ 記録する</button>`;
   }
   $('#homeOut').addEventListener('click', (e) => {
     if (e.target.closest('[data-alerts]')) { alertsOpen = !alertsOpen; renderHome(); return; }
-    const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'waste'); return; }
+    const open = e.target.closest('[data-open]'); if (open) { openCase(open.dataset.open, 'summary'); return; }
+    const hf = e.target.closest('[data-hf]'); if (hf) { homeFilter = hf.dataset.hf; homeFilterSet = true; try { localStorage.setItem('kaitai-jimu-homefilter', homeFilter); } catch (_) { /* noop */ } renderHome(); return; }
     const act = e.target.closest('[data-act]'); if (!act) return;
     if (act.dataset.act === 'newcase') openCaseSheet();
     if (act.dataset.act === 'record') {
@@ -1216,19 +1229,175 @@
       floorArea: $('#cqArea').value, startDate: $('#cqStart').value, endDate: $('#cqEnd').value,
     });
     state.cases.unshift(c); state.currentId = c.id; save(); fillForm(caseForm, c); renderAll();
-    closeCaseSheet(); openCase(c.id, 'waste');
+    closeCaseSheet(); openCase(c.id, 'summary');
     toast(`「${caseName(c)}」を作りました`);
   });
 
+
+  // ---------- 現場の「まとめ」 ----------
+  const dayMs = 86400000;
+  const isoDate = (iso) => (iso ? new Date(iso + 'T00:00:00') : null);
+  function period(c) {
+    const s0 = isoDate(c.startDate), e0 = isoDate(c.endDate); if (!s0 || !e0 || e0 < s0) return null;
+    const total = Math.round((e0 - s0) / dayMs) + 1, day = Math.min(total, Math.max(0, Math.round((today() - s0) / dayMs) + 1));
+    return { total, day, left: Math.max(0, Math.round((e0 - today()) / dayMs)), pct: Math.round(day / total * 100), started: today() >= s0 };
+  }
+  function todos(c) {
+    const area = num(c.floorArea), st = c.startDate, out = [];
+    const add = (key, need, title, due, doc, note) => { if (need) out.push({ key, title, due, doc, note, done: !!(c.todos || {})[key] }); };
+    add('recycle', area >= 80, '建設リサイクル法の届出', addDays(st, -7), 'recycle', '延床80㎡以上。着工7日前まで');
+    add('asbSurvey', c.asbestos === 'unknown', 'アスベストの事前調査', addDays(st, -14), null, '調査結果が「未調査」です');
+    add('asbReport', area >= 80, 'アスベスト調査結果の報告', addDays(st, -1), null, '石綿事前調査結果報告システムで電子報告');
+    add('asbNotice', c.asbestos === 'level12', '特定粉じん排出等作業の届出', addDays(st, -14), null, 'レベル1・2の除去。作業14日前まで');
+    add('greeting', true, '近隣挨拶', addDays(st, -7), 'greeting', '着工1週間〜10日前が目安');
+    add('road', !!c.narrowRoad, '道路使用許可の申請', addDays(st, -7), null, '所轄の警察署へ。早めに');
+    add('certificate', true, '取毀証明書を施主へ渡す', c.endDate ? addDays(c.endDate, 0) : null, 'certificate', '施主が1か月以内に滅失登記');
+    return out;
+  }
+  function dueInfo(due) {
+    if (!due) return { cls: '', label: '日付未定', diff: 9999 };
+    const diff = Math.round((due - today()) / dayMs);
+    if (diff < 0) return { cls: 'late', label: `${-diff}日超過`, diff };
+    if (diff === 0) return { cls: 'late', label: '今日まで', diff };
+    if (diff <= 7) return { cls: 'soon', label: `あと${diff}日`, diff };
+    return { cls: '', label: `${due.getMonth() + 1}/${due.getDate()}まで`, diff };
+  }
+  function nextTodo(c) {
+    const open = todos(c).filter((x) => !x.done && x.due).map((x) => ({ ...x, ...dueInfo(x.due) })).sort((a, b) => a.diff - b.diff);
+    return open[0] && open[0].diff <= 14 ? open[0] : null;
+  }
+  const STRUCT_S = { wood: '木造', steel: '鉄骨造', rc: 'RC造' };
+  const ASB_S = { none: '含有なし', level3: 'あり（レベル3）', level12: 'あり（レベル1・2）', unknown: '未調査' };
+  const INFO_PARTS = [
+    ['client', '施主（お客さま）', (c) => [c.clientName && c.clientName + ' 様', c.clientTel, c.clientAddress].filter(Boolean).join('・'), (c) => !c.clientName],
+    ['building', '解体する建物', (c) => [c.siteAddress, STRUCT_S[c.structure], c.floors && c.floors + '階', num(c.floorArea) ? c.floorArea + '㎡' : '', c.builtYear && c.builtYear + '年築'].filter(Boolean).join('・'), (c) => !c.siteAddress || !num(c.floorArea)],
+    ['site', '現場の条件', (c) => [c.noHeavy && '重機が入れない', c.narrowRoad && '道路が狭い', num(c.debrisM3) && `残置物${c.debrisM3}㎥`, num(c.blockM) && `ブロック塀${c.blockM}m`, num(c.concreteM2) && `土間${c.concreteM2}㎡`, num(c.trees) && `庭木${c.trees}本`].filter(Boolean).join('・') || 'とくになし', () => false],
+    ['asbestos', 'アスベスト', (c) => ASB_S[c.asbestos] + (num(c.asbestosM2) ? `・${c.asbestosM2}㎡` : ''), (c) => c.asbestos === 'unknown'],
+    ['period', '工期', (c) => (c.startDate ? `${md(c.startDate)}〜${md(c.endDate) || '？'}` : '') + (c.workDays ? `・${c.workDays}日` : ''), (c) => !c.startDate || !c.endDate],
+    ['waste', '廃棄物の量の見込み', (c) => [num(c.wConcrete) && `コンクリ${c.wConcrete}t`, num(c.wWood) && `木${c.wWood}t`, num(c.wAsphalt) && `アスファルト${c.wAsphalt}t`, num(c.wMixed) && `混合${c.wMixed}t`].filter(Boolean).join('・'), () => false],
+    ['notes', 'メモ', (c) => String(c.notes || '').slice(0, 40), () => false],
+  ];
+  function renderSummary(c) {
+    const box = $('#summaryOut'); if (!box) return;
+    const [k] = caseStatus(c), pr = period(c), td = todos(c), done = td.filter((x) => x.done).length;
+    const est = calcEstimate(c, state.settings).net, disp = dispSummary(c).total, ex = expenseSummary(c).total, ls = leaseSummary(c).total;
+    const spent = Math.round(disp + ex + ls), remain = est - spent, pct = est ? Math.min(100, Math.round(spent / est * 100)) : 0;
+    const ms = manifestsOf(c).filter((m) => num(m.qty) > 0 && !tooHeavy(m)), last = ms.slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const tt = ms.filter((m) => (WT[m.type] || {}).unit !== '㎥').reduce((a, m) => a + num(m.qty), 0);
+    const map = c.siteAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.siteAddress)}` : '';
+    box.innerHTML = `
+      <div class="stat3">${[['plan', 'これから'], ['live', '工事中'], ['done', '完了']].map(([v, l]) => `<button type="button" data-st="${v}" class="${k === v ? 'on ' + v : ''}">${l}</button>`).join('')}</div>
+      <section class="card pcard" data-info="period">
+        ${pr ? `<div class="pc-row"><span class="lab">工期 ${md(c.startDate)}〜${md(c.endDate)}</span><b>${pr.started ? `${pr.day}日目／${pr.total}日` : `${pr.total}日間`}</b></div>
+          <div class="pbar big"><i style="width:${pr.started ? pr.pct : 0}%"></i></div>
+          <div class="pc-row lab"><span>${pr.started ? '着工' : `着工まで あと${Math.round((isoDate(c.startDate) - today()) / dayMs)}日`}</span><span>${k === 'done' ? '完了' : `完了まで あと${pr.left}日`}</span></div>`
+          : '<div class="pc-row"><b>工期が未定です</b><span class="lnk">入れる ›</span></div>'}
+      </section>
+      <div class="acts4">
+        <button type="button" class="go" data-act="rec"><b>＋</b>捨てた記録</button>
+        <button type="button" data-act="exp"><b>¥</b>経費</button>
+        <button type="button" data-act="est"><b>見</b>見積書</button>
+        ${map ? `<a href="${map}" target="_blank" rel="noopener"><b>地</b>地図</a>` : '<button type="button" data-info="building"><b>地</b>地図</button>'}
+      </div>
+      <section class="card">
+        <div class="ct">やること<small>${done}／${td.length} 済み</small></div>
+        <ul class="todo">${td.map((x) => { const d = dueInfo(x.due); return `<li class="${x.done ? 'done' : ''}">
+          <button type="button" class="cb ${x.done ? 'on' : ''}" data-todo="${x.key}" aria-label="${esc(x.title)}を${x.done ? '未完了に戻す' : '済みにする'}"></button>
+          <span class="t">${esc(x.title)}<small>${esc(x.note)}</small></span>
+          ${x.done ? '<span class="bd">済み</span>' : `<span class="bd ${d.cls}">${d.label}</span>`}
+          ${x.doc && !x.done ? `<button type="button" class="lnk" data-go="${x.doc}">作る ›</button>` : ''}</li>`; }).join('')}</ul>
+        ${c.startDate ? '' : '<p class="hint small">工期を入れると、それぞれの期限が出ます。</p>'}
+      </section>
+      <section class="card tap" data-go="profit">
+        <div class="ct">お金<small>今日まで ›</small></div>
+        <div class="m3"><div><span>見積（税抜）</span><b>¥${yen(est)}</b></div><div><span>かかった</span><b>¥${yen(spent)}</b></div><div><span>残り（見込み）</span><b class="${remain < 0 ? 'neg' : 'pos'}">${remain < 0 ? '−' : ''}¥${yen(Math.abs(remain))}</b></div></div>
+        ${est ? `<div class="pbar"><i class="${pct >= 90 ? 'bad' : pct >= 70 ? 'mid' : ''}" style="width:${pct}%"></i></div><p class="lab">見積の${pct}%を使っています（処分代 ¥${yen(disp)}・経費 ¥${yen(ex)}・リース ¥${yen(ls)}）</p>` : '<p class="lab">延床面積を入れると見積が出ます</p>'}
+      </section>
+      <section class="card tap" data-go="manifest">
+        <div class="ct">処分<small>${last ? `最後：${md(last.date)} ${esc((WT[last.type] || {}).name || '')} ${last.qty}t ›` : 'まだ記録がありません ›'}</small></div>
+        <div class="pc-row"><span class="big">${Math.round(tt * 100) / 100}t</span><span class="big">¥${yen(dispSummary(c).total)}</span></div>
+      </section>
+      <section class="card">
+        <div class="ct">現場の情報<small>押すと直せます</small></div>
+        ${c.clientTel ? `<a class="quick-call" href="tel:${esc(String(c.clientTel).replace(/[^0-9+]/g, ''))}">施主に電話する（${esc(c.clientTel)}）</a>` : ''}
+        <ul class="info-list">${INFO_PARTS.map(([key, title, sum, missing]) => { const v = sum(c); const miss = missing(c); return `<li><button type="button" data-info="${key}">
+          <span class="il-t">${title}${miss ? '<em>未入力あり</em>' : ''}</span><span class="il-v">${esc(v) || '<span class="mut">まだ入っていません</span>'}</span><span class="chev">›</span></button></li>`; }).join('')}</ul>
+      </section>
+      <div class="danger-zone"><button type="button" class="btn ghost" data-act="del">この現場を削除する</button></div>`;
+  }
+  $('#summaryOut').addEventListener('click', (e) => {
+    const c = cur(); let b;
+    if ((b = e.target.closest('[data-st]'))) { c.status = b.dataset.st; save(); renderAll(); toast(`「${b.textContent}」にしました`); return; }
+    if ((b = e.target.closest('[data-todo]'))) {
+      c.todos = c.todos || {}; const k = b.dataset.todo;
+      if (c.todos[k]) delete c.todos[k]; else c.todos[k] = todayIso();
+      save(); renderAll(); try { navigator.vibrate && navigator.vibrate(10); } catch (_) { /* noop */ } return;
+    }
+    if ((b = e.target.closest('[data-info]'))) { editInfo(b.dataset.info); return; }
+    if ((b = e.target.closest('[data-act]'))) {
+      const a = b.dataset.act;
+      if (a === 'rec') openRec(c.id);
+      if (a === 'exp') openExp();
+      if (a === 'est') go('estimate');
+      if (a === 'del') $('#deleteCase').click();
+      return;
+    }
+    if ((b = e.target.closest('[data-go]'))) { go(b.dataset.go); }
+  });
+
+  // ---------- 現場の情報：区切りごとに下から出す ----------
+  let infoIdx = 0;
+  function editInfo(part) {
+    infoIdx = Math.max(0, INFO_PARTS.findIndex((p) => p[0] === part));
+    const body = $('#infoBody'); if (caseForm.parentElement !== body) body.appendChild(caseForm);
+    fillForm(caseForm, cur()); syncChoices(); showInfo();
+    $('#infoSheet').hidden = false; document.body.classList.add('sheet-open');
+  }
+  function showInfo() {
+    const key = INFO_PARTS[infoIdx][0];
+    $$('#caseForm fieldset').forEach((f) => { f.hidden = f.dataset.part !== key; });
+    $('#infoTitle').textContent = INFO_PARTS[infoIdx][1];
+    $('#infoStep').textContent = `現場の情報 ${infoIdx + 1}／${INFO_PARTS.length}`;
+    $('#infoPrev').style.visibility = infoIdx ? 'visible' : 'hidden';
+    $('#infoNext').textContent = infoIdx < INFO_PARTS.length - 1 ? `次へ：${INFO_PARTS[infoIdx + 1][1]} ›` : '完了';
+    $('#infoBody').scrollTop = 0;
+  }
+  const closeInfo = () => { $('#infoSheet').hidden = true; document.body.classList.remove('sheet-open'); renderAll(); };
+  $('#infoSheet').addEventListener('click', (e) => { if (e.target.id === 'infoSheet' || e.target.closest('[data-close]')) closeInfo(); });
+  $('#infoPrev').addEventListener('click', () => { if (infoIdx > 0) { infoIdx--; showInfo(); } });
+  $('#infoNext').addEventListener('click', () => { if (infoIdx < INFO_PARTS.length - 1) { infoIdx++; showInfo(); } else closeInfo(); });
+
+  // ---------- 経費：下から出す ----------
+  function openExp() {
+    $('#expAmount').value = ''; $('#expMemo').value = ''; $('#expDate').value = todayIso(); expDaySync();
+    $('#expSheet').hidden = false; document.body.classList.add('sheet-open'); syncChoices();
+    setTimeout(() => $('#expAmount').focus(), 80);
+  }
+  const closeExp = () => { $('#expSheet').hidden = true; document.body.classList.remove('sheet-open'); };
+  function expDaySync() {
+    const v = $('#expDate').value, y = (() => { const x = today(); x.setDate(x.getDate() - 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; })();
+    $$('#expDay [data-d]').forEach((b) => b.classList.toggle('on', (b.dataset.d === '0' && v === todayIso()) || (b.dataset.d === '-1' && v === y)));
+    const lab = $('#expDay .date'); const other = v && v !== todayIso() && v !== y;
+    lab.classList.toggle('on', other); lab.firstChild.textContent = other ? md(v) : '日付を選ぶ';
+  }
+  $('#expSheet').addEventListener('click', (e) => {
+    if (e.target.id === 'expSheet' || e.target.closest('[data-close]')) { closeExp(); return; }
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    const x = today(); x.setDate(x.getDate() + Number(b.dataset.d));
+    $('#expDate').value = `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; expDaySync();
+  });
+  $('#expDate').addEventListener('change', expDaySync);
+  $('#expOpen').addEventListener('click', openExp);
   // ---------- 少ない選択肢は「押すだけ」のボタンにする ----------
-  const CHOICE_SELECTS = ['#caseForm select[name=structure]', '#expCat'];
+  const CHOICE_SELECTS = ['#caseForm select[name=structure]', '#caseForm select[name=asbestos]', '#expCat'];
   function syncChoices() {
     CHOICE_SELECTS.forEach((q) => {
       const sel = document.querySelector(q); if (!sel || !sel.options.length) return;
       let box = sel.nextElementSibling;
       if (!box || !box.classList.contains('choice')) { box = document.createElement('div'); box.className = 'choice for-select'; sel.after(box); sel.classList.add('sr-only'); sel.tabIndex = -1;
         box.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; sel.value = b.dataset.v; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); syncChoices(); }); }
-      box.innerHTML = [...sel.options].map((o) => `<button type="button" class="cbtn ${o.value === sel.value ? 'on' : ''}" data-v="${esc(o.value)}">${esc(o.textContent.replace(/（.*?）/, ''))}</button>`).join('');
+      const short = [...sel.options].map((o) => o.textContent.replace(/（.*?）/, '')), uniq = new Set(short).size === short.length;
+      box.innerHTML = [...sel.options].map((o, i) => `<button type="button" class="cbtn ${o.value === sel.value ? 'on' : ''}" data-v="${esc(o.value)}">${esc(uniq ? short[i] : o.textContent)}</button>`).join('');
     });
   }
   // 捨てた記録の一覧（この現場・新しい順）
@@ -1441,7 +1610,7 @@
     e.preventDefault();
     const amount = num($('#expAmount').value); if (!(amount > 0)) { $('#expAmount').focus(); return; }
     expensesOf(cur()).push({ id: uid(), date: $('#expDate').value || todayIso(), cat: $('#expCat').value, amount, memo: $('#expMemo').value.trim() });
-    $('#expAmount').value = ''; $('#expMemo').value = ''; save(); renderAll(); $('#expAmount').focus();
+    const cat = $('#expCat').value; $('#expAmount').value = ''; $('#expMemo').value = ''; save(); renderAll(); closeExp(); toast(`経費を記録しました：${cat} ¥${yen(amount)}`);
   });
   const expDelArmed = {};
   $('#expenseList').addEventListener('click', (e) => {
@@ -1539,7 +1708,7 @@
       $('#introOn').addEventListener('change', (e) => { KJIntro.setOff(!e.target.checked); toast(e.target.checked ? '次に開いたときから流れます（1日1回）' : 'オープニング動画を止めました'); });
       $('#introPlay').addEventListener('click', () => KJIntro.play());
     }
-    window.KJNav = { go, openCase, setSection }; // テスト・他の部品から画面を開くため
+    window.KJNav = { go: (t) => (t === 'input' ? (openCase(cur().id, 'summary'), editInfo('client')) : go(t)), openCase, setSection, editInfo }; // テスト・他の部品から画面を開くため
   })();
 
   // クラウド同期（cloud.js）から使う窓口

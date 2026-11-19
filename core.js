@@ -351,16 +351,17 @@
         });
       });
       // 着工前の届出・挨拶（期限の3日前から当日まで）
-      if (c.startDate) {
+      if (c.startDate && c.status !== 'done') {  // 「済み」にしたもの・完了の現場は知らせない
         const area = num(c.floorArea);
         const items = [];
-        if (area >= 80) items.push(['建設リサイクル法の事前届出', addDays(c.startDate, -7)]);
-        if (area >= 80) items.push(['アスベスト事前調査結果の報告', addDays(c.startDate, -1)]);
-        items.push(['近隣挨拶', addDays(c.startDate, -7)]);
-        if (c.narrowRoad) items.push(['道路使用許可', addDays(c.startDate, -7)]);
-        items.forEach(([label, due]) => {
+        if (area >= 80) items.push(['建設リサイクル法の事前届出', addDays(c.startDate, -7), 'recycle']);
+        if (area >= 80) items.push(['アスベスト事前調査結果の報告', addDays(c.startDate, -1), 'asbReport']);
+        items.push(['近隣挨拶', addDays(c.startDate, -7), 'greeting']);
+        if (c.narrowRoad) items.push(['道路使用許可', addDays(c.startDate, -7), 'road']);
+        const done = c.todos || {};
+        items.filter((x) => !done[x[2]]).forEach(([label, due]) => {
           const diff = Math.round((due - now) / 86400000);
-          if (diff >= 0 && diff <= 3) out.schedule.push(`${name}：${label}の期限 ${fmtDate(due)}（${diff === 0 ? '今日' : 'あと' + diff + '日'}）※済んでいれば不要`);
+          if (diff >= 0 && diff <= 3) out.schedule.push(`${name}：${label}の期限 ${fmtDate(due)}（${diff === 0 ? '今日' : 'あと' + diff + '日'}）（済んだらアプリで✓）`);
         });
       }
     });
