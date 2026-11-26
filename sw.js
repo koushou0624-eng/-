@@ -2,7 +2,7 @@
 // ・画面のファイル（同じサイトのもの）：まずネットから新しいものを取り、取れなければ残しておいたものを使う
 // ・Supabase（データの送受信）や LINE などは通さない（アプリ側で、つながったら送る）
 const CACHE = 'kaitai-jimu-v1';
-const CORE = ['./', './index.html', './style.css', './core.js', './app.js', './cloud.js', './pdf.js', './config.js', './intro.js', './manifest.json',
+const CORE = ['./', './index.html', './style.css', './core.js', './xlsx.js', './app.js', './cloud.js', './pdf.js', './config.js', './intro.js', './manifest.json',
   './vendor/supabase-2.45.4.js', './icons/icon-192.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(CORE.map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));

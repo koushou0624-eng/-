@@ -814,6 +814,64 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
 .mon-break { gap: 4px 12px; }
 .mr-total { margin-left: auto; color: var(--ink); }
 
+/* ===== かんたん見積もり入力・提案単価 ===== */
+.qe-sheet .field { border-top: 1px solid var(--line); padding-top: 12px; }
+.qe-sheet .field:first-child { border-top: 0; padding-top: 0; }
+.qe-lab { font-size: 14px; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
+.qe-lab small { font-weight: 400; margin-left: 4px; }
+.qe-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.qe-area { color: var(--ink); font-size: 16px; margin-left: 6px; }
+.qe-range { width: 100%; min-height: 0; padding: 0; margin: 4px 0 10px; border: 0; accent-color: var(--brand); background: none; box-shadow: none; }
+.qe-unit { display: flex; align-items: center; gap: 8px; margin: 0; }
+.qe-unit input { margin: 0; flex: 1; min-width: 0; font-weight: 700; text-align: right; }
+.qe-unit span { font-weight: 700; color: var(--muted); min-width: 24px; }
+.stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
+.stepper button { width: 48px; height: 48px; border: 0; background: var(--soft); font-size: 22px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.stepper b { min-width: 70px; text-align: center; font-size: 20px; font-variant-numeric: tabular-nums; }
+.stepper b small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.mrow-q { border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px 14px; margin: 0 0 10px; background: var(--panel); }
+.mq-top { display: flex; justify-content: space-between; align-items: center; }
+.small-x { width: 32px; height: 32px; }
+.small-x::before, .small-x::after { left: 9px; right: 9px; top: 15px; }
+.mod { border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 12px; margin: 0 0 8px; background: var(--panel); display: grid; gap: 8px; }
+.mod.on { border-color: var(--brand); }
+.mod .qe-unit { padding-bottom: 6px; }
+.mod .choice { padding-bottom: 2px; }
+.mod-t { display: flex; align-items: center; gap: 12px; border: 0; background: none; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); min-height: 44px; padding: 0; cursor: pointer; text-align: left; }
+.sw-t { width: 44px; height: 26px; border-radius: 13px; background: var(--soft); border: 1.5px solid var(--line); position: relative; flex: none; }
+.sw-t::after { content: ""; position: absolute; left: 2px; top: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+.mod.on .sw-t { background: var(--brand); border-color: var(--brand); }
+.mod.on .sw-t::after { left: 20px; }
+.qe-foot { display: grid; gap: 8px; }
+.qe-sum { display: grid; grid-template-columns: 1.2fr 1.1fr .8fr; gap: 6px; }
+.qe-sum > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; display: grid; min-width: 0; }
+.qe-sum span { font-size: 11px; color: var(--muted); }
+.qe-sum b { font-size: 17px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.qe-sum .good b { color: var(--ok); } .qe-sum .mid b { color: var(--warn); } .qe-sum .bad b { color: var(--bad); }
+.est-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.est-sum > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; min-width: 0; }
+.est-sum span { font-size: 12px; color: var(--muted); }
+.est-sum b { font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.est-sum b small { font-size: 12px; font-weight: 400; }
+.est-sum.good > div:last-child b { color: var(--ok); } .est-sum.mid > div:last-child b { color: var(--warn); } .est-sum.bad > div:last-child b { color: var(--bad); }
+.adj-list { list-style: none; margin: 0; padding: 0; }
+.adj-list li { display: grid; grid-template-columns: 1fr 150px; gap: 4px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.adj-list li:first-child { border-top: 0; }
+.adj-name { font-size: 14px; font-weight: 700; display: grid; gap: 2px; min-width: 0; }
+.adj-name small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.adj-in { display: flex; align-items: center; gap: 4px; margin: 0; }
+.adj-in input { margin: 0; text-align: right; font-weight: 700; min-height: 42px; }
+.adj-list .link { grid-column: 2; justify-self: end; font-size: 12px; }
+.adj-hist ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+.est-empty { border-left: 5px solid var(--go); }
+.mrates input { min-height: 38px; margin: 0; text-align: right; }
+#tab-estimate .toolbar .btn.go { order: -1; }
+@media (max-width: 600px) { .est-sum b { font-size: 15px; } }
+.qe-sum b, .est-sum b { white-space: nowrap; font-size: clamp(13px, 3.9vw, 18px); overflow-wrap: normal; }
+.est-sum b small { display: block; font-size: 12px; }
+.qe-sum > div, .est-sum > div { padding: 6px 8px; }
+.qe-sum { grid-template-columns: 1fr 1fr .7fr; }
+
 .case-switch select{color:#1d232b;background:#fff}
 .paper th{color:#000}
 .disclaimer{background:var(--soft);color:var(--muted);font-size:13px;padding:8px 12px;border-radius:6px;margin:0 0 12px}
@@ -1297,14 +1355,14 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
 (() => {
   'use strict';
   const STORE_KEY = 'kaitai-jimu-v1';
-  const STRUCT = { wood: '木造', steel: '鉄骨造', rc: '鉄筋コンクリート造' };
+  const STRUCT = { wood: '木造', steel: '鉄骨造', rc: '鉄筋コンクリート造', src: '鉄骨鉄筋コンクリート造' };
   const ASB = {
     none: '含有なし', level3: 'あり（レベル3）', level12: 'あり（レベル1・2）', unknown: '未調査',
   };
   // 相場の目安（必ず自社単価に変更する前提）
   const DEFAULT_SETTINGS = {
     name: '', rep: '', address: '', tel: '', permit: '', validDays: 30,
-    pWood: 40000, pSteel: 50000, pRc: 65000, pManual: 30, pNarrow: 10,
+    pWood: 40000, pSteel: 50000, pRc: 65000, pSrc: 75000, pManual: 30, pNarrow: 10,
     pDebris: 12000, pBlock: 8000, pConcrete: 3000, pTree: 15000,
     pAsb3: 3000, pAsb12: 30000, pScaffold: 800, pOverhead: 5,
     // 原価（利益チェック用）
@@ -1313,6 +1371,11 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     // 処分単価（円/t、アスベストは円/㎥）。相場の目安
     dispPrices: { wood: 12, concrete: 3000, concreteR: 4500, mixed: 25000, plastic: 35000, glass: 10000, gypsum: 20000, asphalt: 3000, metal: 5000, asb: 30000, asbsp: 80000 },
     cGuard: 18000, cOutsource: 70, cScrap: 30000, targetMargin: 30,
+    // 重機（機種ごと・1台あたり）と職人。相場の目安
+    cOperator: 25000, cGas: 22000,
+    mDaily: { '0.1': 8000, '0.25': 12000, '0.45': 18000, '0.7': 25000 }, // 損料・燃料（円/日）
+    mMove: { '0.1': 20000, '0.25': 30000, '0.45': 40000, '0.7': 55000 }, // 回送（円/片道）
+    mAttach: { bucket: 0, breaker: 5000, crusher: 6000, grapple: 3000 }, // アタッチメント（円/日・追加）
     defCarrier: '', defDisposer: '',
     // リースの機械：日額・月極・この日数を超えたら月極・回送費（往復）。相場の目安
     leasePresets: [
@@ -1336,9 +1399,13 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     wood: { c: 0.25, w: 0.1, a: 0.02, m: 0.04, fe: 0.005 },
     steel: { c: 0.5, w: 0.03, a: 0.02, m: 0.04, fe: 0.08 },
     rc: { c: 1.0, w: 0.02, a: 0.02, m: 0.03, fe: 0.06 },
+    src: { c: 1.1, w: 0.02, a: 0.02, m: 0.03, fe: 0.09 },
   };
   // 1日に解体できる坪数の目安（重機あり）
-  const TSUBO_PER_DAY = { wood: 8, steel: 5, rc: 3 };
+  const TSUBO_PER_DAY = { wood: 8, steel: 5, rc: 3, src: 2.5 };
+  const M_SIZES = ['0.1', '0.25', '0.45', '0.7'];
+  const ATTACH = { bucket: 'バケット', breaker: 'ブレーカー', crusher: '圧砕機（カッター）', grapple: 'つかみ' };
+  const USES = ['専用住宅', '共同住宅', '事務所', '店舗', '倉庫', '工場', 'その他'];
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -1469,23 +1536,27 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
   function calcEstimate(c, s) {
     const area = num(c.floorArea);
     const tsubo = area * 0.3025;
-    const unit = { wood: num(s.pWood), steel: num(s.pSteel), rc: num(s.pRc) }[c.structure];
-    const lines = [];
-    const add = (name, qty, u, price, note = '') => { if (qty > 0 && price > 0) lines.push({ name, qty, u, price, amount: qty * price, note }); };
-    add(`建物本体解体工事（${STRUCT[c.structure]}・${c.floors || '-'}階建）`, +tsubo.toFixed(2), '坪', unit, `延床 ${area}㎡`);
-    add('仮設工事（養生シート・足場）', area, '㎡', num(s.pScaffold));
+    const unit = { wood: num(s.pWood), steel: num(s.pSteel), rc: num(s.pRc), src: num(s.pSrc) }[c.structure];
+    const lines = [], adj = c.estAdj || {};
+    const has = (k) => adj[k] !== undefined && adj[k] !== null && adj[k] !== '';
+    const add = (key, name, qty, u, auto, note = '') => {
+      const price = has(key) ? num(adj[key]) : auto;
+      if (qty > 0 && (auto > 0 || has(key)) && price >= 0) lines.push({ key, name, qty, u, price, auto, adjusted: has(key), amount: qty * price, note });
+    };
+    add('body', `建物本体解体工事（${STRUCT[c.structure]}・${c.floors || '-'}階建）`, +tsubo.toFixed(2), '坪', unit, `延床 ${area}㎡${num(c.height) ? `・高さ ${c.height}m` : ''}`);
+    add('scaffold', '仮設工事（養生シート・足場）', area, '㎡', num(s.pScaffold));
     const base = tsubo * unit;
-    if (c.noHeavy) add('手壊し作業割増', 1, '式', base * num(s.pManual) / 100, `本体の${s.pManual}%`);
-    if (c.narrowRoad) add('小運搬・狭小道路割増', 1, '式', base * num(s.pNarrow) / 100, `本体の${s.pNarrow}%`);
-    add('残置物撤去・処分', num(c.debrisM3), '㎥', num(s.pDebris));
-    add('ブロック塀撤去', num(c.blockM), 'm', num(s.pBlock));
-    add('土間コンクリート撤去', num(c.concreteM2), '㎡', num(s.pConcrete));
-    add('庭木伐採・抜根', num(c.trees), '本', num(s.pTree));
-    if (c.asbestos === 'level3') add('アスベスト含有建材 除去（レベル3）', num(c.asbestosM2), '㎡', num(s.pAsb3));
-    if (c.asbestos === 'level12') add('アスベスト 除去（レベル1・2）', num(c.asbestosM2), '㎡', num(s.pAsb12));
+    if (c.noHeavy) add('manual', '手壊し作業割増', 1, '式', base * num(s.pManual) / 100, `本体の${s.pManual}%`);
+    if (c.narrowRoad) add('narrow', '小運搬・狭小道路割増', 1, '式', base * num(s.pNarrow) / 100, `本体の${s.pNarrow}%`);
+    add('debris', '残置物撤去・処分', num(c.debrisM3), '㎥', num(s.pDebris));
+    add('block', 'ブロック塀撤去', num(c.blockM), 'm', num(s.pBlock));
+    add('concrete', '土間コンクリート撤去', num(c.concreteM2), '㎡', num(s.pConcrete));
+    add('tree', '庭木伐採・抜根', num(c.trees), '本', num(s.pTree));
+    if (c.asbestos === 'level3') add('asb3', 'アスベスト含有建材 除去（レベル3）', num(c.asbestosM2), '㎡', num(s.pAsb3));
+    if (c.asbestos === 'level12') add('asb12', 'アスベスト 除去（レベル1・2）', num(c.asbestosM2), '㎡', num(s.pAsb12));
     const sub = lines.reduce((a, l) => a + l.amount, 0);
-    const overhead = sub * num(s.pOverhead) / 100;
-    if (overhead > 0) lines.push({ name: '諸経費（届出代行・近隣対応・現場管理）', qty: 1, u: '式', price: overhead, amount: overhead, note: '' });
+    add('overhead', '諸経費（届出代行・近隣対応・現場管理）', sub > 0 ? 1 : 0, '式', sub * num(s.pOverhead) / 100);
+    const overhead = 0;
     const net = Math.round(sub + overhead);
     const tax = Math.floor(net * 0.1);
     return { lines, net, tax, total: net + tax, tsubo };
@@ -1530,20 +1601,38 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     return { phases, days: total, auto: !(manual > 0) };
   }
 
+  // 手元の標準人数：設定の作業員数（オペ込み）からオペを引く。手壊しは＋2人
+  function handAutoOf(c, s) {
+    if (c.noHeavy) return num(s.cWorkers) + 2;
+    const ops = (c.machines || []).filter((m) => num(m.count) > 0).reduce((a, m) => a + num(m.ops), 0);
+    return Math.max(1, num(s.cWorkers) - ops);
+  }
   function calcCost(c, s) {
     const e = calcEstimate(c, s), w = wasteOf(c), plan = planOf(c), d = plan.days;
-    const workers = num(s.cWorkers) + (c.noHeavy ? 2 : 0);
+    const crew = c.crew || {}, setHand = crew.hand !== undefined && crew.hand !== null && crew.hand !== '';
+    const ms = (c.machines || []).filter((m) => num(m.count) > 0), useM = ms.length > 0 && !c.noHeavy;
+    const ops = useM ? ms.reduce((a, m) => a + num(m.ops), 0) : 0, gas = num(crew.gas);
+    const workers = setHand ? num(crew.hand) : handAutoOf(c, s);
+    const md = (k, sz) => num(((s[k] || {})[sz]));
     const tons = w.concrete + w.wood + w.asphalt + w.mixed;
     const trucks = Math.ceil(tons / Math.max(0.5, num(s.cTruckLoad))) + Math.ceil(num(c.debrisM3) / Math.max(1, num(s.cTruckLoad) * 2));
     const asbLine = e.lines.find((l) => l.name.startsWith('アスベスト'));
     const dp = (id) => num((s.dispPrices || {})[id]);
+    // 処分単価は種類ごとに 円/t・円/kg・円/㎥（㎥は重さから換算できないので t として扱う）
+    const pu = (id) => { const u = (s.priceUnits || {})[id]; return u === 'kg' ? 'kg' : 't'; };
+    const dc = (id, t) => (pu(id) === 'kg' ? t * 1000 * dp(id) : t * dp(id));
+    const dt = (id, t) => (pu(id) === 'kg' ? `${yen(Math.round(t * 1000))}kg × ${yen(dp(id))}円` : `${t.toFixed(1)}t × ${yen(dp(id))}円`);
     const rows = [
-      { name: '作業員（人工）', detail: `${workers}人 × ${d}日 × ${yen(s.cLabor)}円`, amount: workers * d * num(s.cLabor) },
-      { name: '重機（回送・損料・燃料）', detail: c.noHeavy ? '重機なし（手壊し）' : `回送 往復 ${yen(num(s.cMove) * 2)}円 ＋ ${d}日 × ${yen(s.cMachine)}円`, amount: c.noHeavy ? 0 : num(s.cMove) * 2 + d * num(s.cMachine) },
+      { name: setHand ? '手元作業員（人工）' : '作業員（人工）', detail: `${workers}人 × ${d}日 × ${yen(s.cLabor)}円`, amount: workers * d * num(s.cLabor) },
+      ...(useM ? ms.map((m) => { const daily = md('mDaily', m.size) + num((s.mAttach || {})[m.attach]), mv = md('mMove', m.size);
+        return { name: `重機 ${m.size}㎥（${ATTACH[m.attach] || 'バケット'}）×${num(m.count)}台`, detail: `回送 往復 ${yen(mv * 2)}円 ＋ ${d}日 × ${yen(daily)}円（損料・燃料${num((s.mAttach || {})[m.attach]) ? '・アタッチメント' : ''}）`, amount: num(m.count) * (mv * 2 + d * daily) }; })
+        : [{ name: '重機（回送・損料・燃料）', detail: c.noHeavy ? '重機なし（手壊し）' : `回送 往復 ${yen(num(s.cMove) * 2)}円 ＋ ${d}日 × ${yen(s.cMachine)}円`, amount: c.noHeavy ? 0 : num(s.cMove) * 2 + d * num(s.cMachine) }]),
+      ...(ops ? [{ name: 'オペレーター', detail: `${ops}人 × ${d}日 × ${yen(s.cOperator)}円`, amount: ops * d * num(s.cOperator) }] : []),
+      ...(gas ? [{ name: 'ガス工', detail: `${gas}人 × ${d}日 × ${yen(s.cGas)}円`, amount: gas * d * num(s.cGas) }] : []),
       { name: 'ダンプ運搬', detail: `${trucks}台 × ${yen(s.cTruck)}円（${num(s.cTruckLoad)}t積み）`, amount: trucks * num(s.cTruck) },
-      { name: '処分費 コンクリートガラ・アスファルトガラ', detail: `${w.concrete.toFixed(1)}t × ${yen(dp('concrete'))}円 ＋ ${w.asphalt.toFixed(1)}t × ${yen(dp('asphalt'))}円`, amount: w.concrete * dp('concrete') + w.asphalt * dp('asphalt') },
-      { name: '処分費 木（シバ）', detail: `${w.wood.toFixed(1)}t × ${yen(dp('wood'))}円`, amount: w.wood * dp('wood') },
-      { name: '処分費 ミンチ（混合廃棄物）', detail: `${w.mixed.toFixed(1)}t × ${yen(dp('mixed'))}円`, amount: w.mixed * dp('mixed') },
+      { name: '処分費 コンクリートガラ・アスファルトガラ', detail: `${dt('concrete', w.concrete)} ＋ ${dt('asphalt', w.asphalt)}`, amount: dc('concrete', w.concrete) + dc('asphalt', w.asphalt) },
+      { name: '処分費 木（シバ）', detail: dt('wood', w.wood), amount: dc('wood', w.wood) },
+      { name: '処分費 ミンチ（混合廃棄物）', detail: dt('mixed', w.mixed), amount: dc('mixed', w.mixed) },
       { name: '処分費 残置物', detail: `${num(c.debrisM3)}㎥ × ${yen(s.cDispDebris)}円`, amount: num(c.debrisM3) * num(s.cDispDebris) },
       { name: 'アスベスト除去（外注）', detail: asbLine ? `見積額の${num(s.cOutsource)}%` : 'なし', amount: asbLine ? asbLine.amount * num(s.cOutsource) / 100 : 0 },
       { name: 'ガードマン（交通誘導）', detail: c.narrowRoad ? `1人 × ${d}日 × ${yen(s.cGuard)}円` : '不要（狭小道路でない）', amount: c.narrowRoad ? d * num(s.cGuard) : 0 },
@@ -1612,6 +1701,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
 
   function renderEstimate(c, s) {
     const e = calcEstimate(c, s);
+    renderEstPanel(c, s, e);
     const issued = new Date(c.createdAt || Date.now());
     const valid = new Date(issued); valid.setDate(valid.getDate() + num(s.validDays || 30));
     const rows = e.lines.map((l) => `<tr><td>${esc(l.name)}${l.note ? `<br><span class="small">${esc(l.note)}</span>` : ''}</td><td class="num">${l.u === '式' ? 1 : l.qty.toLocaleString('ja-JP')}</td><td>${l.u}</td><td class="num">${l.u === '式' ? '' : yen(l.price)}</td><td class="num">${yen(l.amount)}</td></tr>`).join('');
@@ -2793,7 +2883,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     const open = todos(c).filter((x) => !x.done && x.due).map((x) => ({ ...x, ...dueInfo(x.due) })).sort((a, b) => a.diff - b.diff);
     return open[0] && open[0].diff <= 14 ? open[0] : null;
   }
-  const STRUCT_S = { wood: '木造', steel: '鉄骨造', rc: 'RC造' };
+  const STRUCT_S = { wood: '木造', steel: '鉄骨造', rc: 'RC造', src: 'SRC造' };
   const ASB_S = { none: '含有なし', level3: 'あり（レベル3）', level12: 'あり（レベル1・2）', unknown: '未調査' };
   const INFO_PARTS = [
     ['client', '施主（お客さま）', (c) => [c.clientName && c.clientName + ' 様', c.clientTel, c.clientAddress].filter(Boolean).join('・'), (c) => !c.clientName],
@@ -2877,7 +2967,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
       const a = b.dataset.act;
       if (a === 'rec') openRec(c.id);
       if (a === 'exp') openExp();
-      if (a === 'est') go('estimate');
+      if (a === 'est') { go('estimate'); if (!num(c.floorArea)) openQE(); }
       if (a === 'del') $('#deleteCase').click();
       if (a === 'lease') { go('lease'); setTimeout(() => { $('#leasePreset')?.scrollIntoView({ block: 'center' }); $('#leasePreset')?.focus(); }, 80); }
       return;
@@ -2928,6 +3018,192 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
   });
   $('#expDate').addEventListener('change', expDaySync);
   $('#expOpen').addEventListener('click', openExp);
+
+  // ---------- 見積：原価と提案単価を分けて見る・直す（履歴つき） ----------
+  function renderEstPanel(c, s, e) {
+    const box = $('#estPanel'); if (!box) return;
+    if (!num(c.floorArea)) { box.innerHTML = '<div class="card est-empty"><b>まず「かんたん見積もり入力」で建物と面積を入れてください。</b></div>'; return; }
+    const r = calcCost(c, s), profit = e.net - r.cost, mg = e.net ? profit / e.net * 100 : 0;
+    const cls = mg >= r.target ? 'good' : mg >= r.target - 10 ? 'mid' : 'bad';
+    const hist = (c.estHistory || []).slice(-8).reverse();
+    box.innerHTML = `
+      <div class="est-sum ${cls}"><div><span>見積（税抜）</span><b>¥${yen(e.net)}</b></div><div><span>原価</span><b>¥${yen(r.cost)}</b></div><div><span>粗利</span><b>${profit < 0 ? '−' : ''}¥${yen(Math.abs(profit))}<small>（${mg.toFixed(1)}%）</small></b></div></div>
+      <details class="card fold est-adj" ${e.lines.some((l) => l.adjusted) ? 'open' : ''}>
+        <summary>明細の単価を変える（提案単価）${e.lines.some((l) => l.adjusted) ? '<span class="chip soon">変更あり</span>' : ''}</summary>
+        <p class="hint">空欄なら自動の単価です。数字を入れるとその単価で見積書を作ります（原価は変わりません）。</p>
+        <ul class="adj-list">${e.lines.map((l) => `<li><div class="adj-name">${esc(l.name)}<small>${l.u === '式' ? '一式' : `${l.qty.toLocaleString('ja-JP')}${l.u}`}・自動 ¥${yen(l.auto)}${l.u === '式' ? '' : `/${l.u}`}</small></div>
+          <label class="adj-in"><span>¥</span><input type="number" inputmode="numeric" min="0" data-adj="${l.key}" value="${l.adjusted ? esc(c.estAdj[l.key]) : ''}" placeholder="${yen(l.auto)}" aria-label="${esc(l.name)}の提案単価"></label>
+          ${l.adjusted ? `<button type="button" class="link" data-adjreset="${l.key}">自動に戻す</button>` : ''}</li>`).join('')}</ul>
+        ${hist.length ? `<div class="adj-hist"><div class="sec-label">変更の履歴</div><ul>${hist.map((h) => `<li>${md(h.at.slice(0, 10))} ${esc(h.name)}：${h.from == null ? '自動' : '¥' + yen(h.from)} → ${h.to == null ? '自動' : '¥' + yen(h.to)}</li>`).join('')}</ul></div>` : ''}
+      </details>`;
+  }
+  function setAdj(key, val) {
+    const c = cur(), e = calcEstimate(c, state.settings), line = e.lines.find((l) => l.key === key) || { name: key };
+    c.estAdj = c.estAdj || {}; const before = c.estAdj[key] === undefined || c.estAdj[key] === '' ? null : num(c.estAdj[key]);
+    const after = val === '' || val == null ? null : num(val);
+    if (before === after) return;
+    if (after == null) delete c.estAdj[key]; else c.estAdj[key] = after;
+    c.estHistory = (c.estHistory || []).concat({ at: new Date().toISOString(), key, name: line.name.replace(/（.*$/, ''), from: before, to: after }).slice(-50);
+    save(); renderAll();
+  }
+  $('#estPanel').addEventListener('change', (e) => { const k = e.target.dataset.adj; if (k) setAdj(k, e.target.value.trim()); });
+  $('#estPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-adjreset]'); if (b) setAdj(b.dataset.adjreset, ''); });
+
+  // ---------- 見積書を Excel で ----------
+  function estimateXlsx(c, s) {
+    const e = calcEstimate(c, s), r = calcCost(c, s), issued = new Date(c.createdAt || Date.now());
+    const valid = new Date(issued); valid.setDate(valid.getDate() + num(s.validDays || 30));
+    const d = (x) => `${x.getFullYear()}年${x.getMonth() + 1}月${x.getDate()}日`;
+    const T = (v, st) => ({ v, s: st });
+    const rows = [
+      [T('御見積書', 1)], [],
+      [T(`${c.clientName || ''} 様`, 8), null, null, T(`No. ${c.estimateNo || ''}`, 0)],
+      [T('下記の通りお見積り申し上げます。', 7), null, null, T(d(issued), 0)],
+      [T('御見積金額（税込）', 8), T(e.total, 10)], [],
+      [T('工事名', 6), T(`${c.clientName || ''}様邸 解体工事`, 3), null, T(s.name || '', 8)],
+      [T('工事場所', 6), T(c.siteAddress || '', 3), null, T(s.address || '', 0)],
+      [T('工期', 6), T(`${fmtIso(c.startDate) || '別途協議'} 〜 ${fmtIso(c.endDate) || ''}`, 3), null, T(s.tel ? `TEL ${s.tel}` : '', 0)],
+      [T('有効期限', 6), T(d(valid), 3)], [],
+      [T('項目', 2), T('数量', 2), T('単位', 2), T('単価', 2), T('金額', 2)],
+      ...e.lines.map((l) => [T(l.name + (l.note ? `（${l.note}）` : ''), 3), T(l.u === '式' ? 1 : l.qty, 4), T(l.u, 3), T(l.u === '式' ? '' : Math.round(l.price), 4), T(Math.round(l.amount), 4)]),
+      [T('', 3), T('', 3), T('', 3), T('小計（税抜）', 6), T(e.net, 5)],
+      [T('', 3), T('', 3), T('', 3), T('消費税（10%）', 6), T(e.tax, 5)],
+      [T('', 3), T('', 3), T('', 3), T('合計（税込）', 6), T(e.total, 5)], [],
+      [T('備考', 8)],
+      [T('・産業廃棄物は分別解体のうえ、許可業者にて適正に処理し、マニフェストで管理いたします。', 7)],
+      [T(`・アスベスト事前調査結果：${ASB[c.asbestos] || ''}`, 7)],
+      [T('・地中埋設物（浄化槽・ガラ等）が発見された場合は別途お見積りとなります。', 7)],
+      ...String(c.notes || '').split('\n').filter(Boolean).map((x) => [T('・' + x, 7)]),
+    ];
+    const n = rows.length;
+    const merges = ['A1:E1', 'B7:C7', 'B8:C8', 'B9:C9', 'B10:C10', 'D7:E7', 'D8:E8', 'D9:E9'];
+    for (let i = n - 4 - String(c.notes || '').split('\n').filter(Boolean).length; i <= n; i++) merges.push(`A${i}:E${i}`);
+    const cost = [
+      [T('原価の内訳（社内用）', 1)], [],
+      [T('項目', 2), T('内訳', 2), T('金額', 2)],
+      ...r.rows.map((x) => [T(x.name, 3), T(x.detail, 3), T(Math.round(x.amount), 4)]),
+      [T('原価 合計', 6), T('', 3), T(r.cost, 5)],
+      [T('見積（税抜）', 6), T('', 3), T(e.net, 5)],
+      [T('粗利', 6), T(`${(e.net ? (e.net - r.cost) / e.net * 100 : 0).toFixed(1)}%`, 3), T(e.net - r.cost, 5)],
+    ];
+    return KJXlsx.build([{ name: '御見積書', cols: [44, 10, 8, 14, 16], rows, merges: merges.filter((m, i, a) => a.indexOf(m) === i), heights: { 0: 32 } }, { name: '原価（社内用）', cols: [34, 52, 16], rows: cost, merges: ['A1:C1'], heights: { 0: 32 } }]);
+  }
+  $('#xlsxBtn').addEventListener('click', () => {
+    if (!window.KJXlsx) { toast('この画面ではExcelを作れません'); return; }
+    const c = cur(); if (!num(c.floorArea)) { toast('先に延床面積を入れてください'); return; }
+    const blob = estimateXlsx(c, state.settings), name = `見積書_${(c.clientName || '現場').replace(/[\\/:*?"<>|\s]/g, '')}様邸.xlsx`;
+    const file = typeof File === 'function' ? new File([blob], name, { type: blob.type }) : null;
+    const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); toast('Excelを保存しました（2枚目は社内用の原価）'); };
+    // スマホは共有（LINE・メール・ファイルに保存）、パソコンはダウンロード
+    if (file && navigator.maxTouchPoints > 1 && navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: name }).catch((err) => { if (err && err.name !== 'AbortError') dl(); });
+    else dl();
+  });
+
+  // ---------- かんたん見積もり入力（押して選ぶ） ----------
+  const qeChip = (attr, v, label, on) => `<button type="button" class="cbtn ${on ? 'on' : ''}" data-${attr}="${esc(String(v))}">${label}</button>`;
+  const stepper = (attr, v, unit, min = 0) => `<span class="stepper"><button type="button" data-${attr}="-1" data-min="${min}" aria-label="減らす">−</button><b>${v}<small>${unit}</small></b><button type="button" data-${attr}="1" aria-label="増やす">＋</button></span>`;
+  const QE_MODS = [['debrisM3', '残置物', '㎥'], ['blockM', 'ブロック塀', 'm'], ['concreteM2', '土間コンクリート', '㎡'], ['trees', '庭木', '本']];
+  function openQE() { const c = cur(); c.qeOn = c.qeOn || {}; QE_MODS.forEach(([k]) => { if (num(c[k]) > 0) c.qeOn[k] = true; }); $('#qeSheet').hidden = false; document.body.classList.add('sheet-open'); renderQE(); }
+  const closeQE = () => { $('#qeSheet').hidden = true; document.body.classList.remove('sheet-open'); renderAll(); };
+  function renderQE() {
+    const c = cur(), area = num(c.floorArea), tsubo = area * 0.3025, crew = c.crew || {}, on = c.qeOn || {};
+    const plan = planOf(c);
+    const handAuto = handAutoOf(c, state.settings);
+    $('#qeBody').innerHTML = `
+      <div class="field"><div class="flabel"><i>1</i>建物</div>
+        <div class="qe-lab">構造</div><div class="choice">${Object.entries({ wood: '木造', steel: '鉄骨造（S造）', rc: 'RC造', src: 'SRC造' }).map(([k, l]) => qeChip('qstruct', k, l, c.structure === k)).join('')}</div>
+        <div class="qe-lab">用途</div><div class="choice">${USES.map((u) => qeChip('quse', u, u, (c.use || '') === u || (u === '専用住宅' && c.use === '住宅'))).join('')}</div>
+        <div class="qe-row"><div><div class="qe-lab">階数</div>${stepper('qfloors', num(c.floors) || 1, '階', 1)}</div>
+          <div><div class="qe-lab">高さ（なくてもOK）</div><label class="qe-unit"><input type="number" inputmode="decimal" min="0" step="0.1" data-qf="height" value="${esc(c.height || '')}" placeholder="0"><span>m</span></label></div></div>
+        <div class="qe-lab">延床面積 <b id="qeArea" class="qe-area">${area ? `${(Math.round(tsubo * 10) / 10)}坪（${area}㎡）` : '未入力'}</b></div>
+        <input type="range" class="qe-range" min="1" max="300" step="1" data-qf="tsubo" value="${Math.max(1, Math.round(tsubo) || 30)}" aria-label="延床面積（坪）">
+        <label class="qe-unit"><input type="number" inputmode="decimal" min="0" step="0.01" data-qf="floorArea" value="${esc(c.floorArea || '')}" placeholder="例 99"><span>㎡</span></label>
+      </div>
+      <div class="field"><div class="flabel"><i>2</i>重機（1日あたり）</div>
+        ${c.noHeavy ? '<p class="hint">「手壊し」がONなので、重機は使わない計算です。</p>' : `${(c.machines || []).map((m) => `<div class="mrow-q" data-mid="${m.id}">
+          <div class="mq-top"><b>重機</b><button type="button" class="x small-x" data-mdel="${m.id}" aria-label="この重機を消す"></button></div>
+          <div class="qe-lab">機種（バケット容量）</div><div class="choice">${M_SIZES.map((z) => qeChip('msize', z, `${z}㎥`, m.size === z)).join('')}</div>
+          <div class="qe-lab">アタッチメント</div><div class="choice">${Object.entries(ATTACH).map(([k, l]) => qeChip('mattach', k, l, m.attach === k)).join('')}</div>
+          <div class="qe-row"><div><div class="qe-lab">台数</div>${stepper('mcount', num(m.count), '台', 1)}</div><div><div class="qe-lab">オペレーター</div>${stepper('mops', num(m.ops), '人')}</div></div>
+        </div>`).join('')}
+        <button type="button" class="btn ghost wide" data-madd>＋ 重機を追加</button>
+        ${(c.machines || []).length ? '' : '<p class="hint small">重機を入れないときは、設定の標準の重機費で計算します。</p>'}`}
+      </div>
+      <div class="field"><div class="flabel"><i>3</i>職人（1日あたり）</div>
+        <div class="qe-row"><div><div class="qe-lab">手元作業員${crew.hand === undefined || crew.hand === '' ? `<small>（今は標準の${handAuto}人）</small>` : ''}</div>${stepper('qhand', crew.hand === undefined || crew.hand === '' ? handAuto : num(crew.hand), '人')}</div>
+          <div><div class="qe-lab">ガス工</div>${stepper('qgas', num(crew.gas), '人')}</div></div>
+        <div class="qe-lab">作業日数 ${plan.auto ? `<small>（自動で${plan.days}日）</small>` : `<button type="button" class="link" data-qdaysauto>自動に戻す</button>`}</div>
+        ${stepper('qdays', plan.days, '日', 1)}
+      </div>
+      <div class="field"><div class="flabel"><i>4</i>付帯工事（あるものだけON）</div>
+        ${QE_MODS.map(([k, l, u]) => `<div class="mod ${on[k] ? 'on' : ''}"><button type="button" class="mod-t" data-mod="${k}"><span class="sw-t"></span>${l}</button>${on[k] ? `<label class="qe-unit"><input type="number" inputmode="decimal" min="0" step="0.5" data-qf="${k}" value="${esc(c[k] || '')}" placeholder="0"><span>${u}</span></label>` : ''}</div>`).join('')}
+        <div class="mod ${c.asbestos === 'level3' || c.asbestos === 'level12' ? 'on' : ''}"><button type="button" class="mod-t" data-mod="asb"><span class="sw-t"></span>アスベスト除去</button>
+          ${c.asbestos === 'level3' || c.asbestos === 'level12' ? `<div class="choice">${qeChip('qasb', 'level3', 'レベル3（成形板など）', c.asbestos === 'level3')}${qeChip('qasb', 'level12', 'レベル1・2（吹付けなど）', c.asbestos === 'level12')}</div><label class="qe-unit"><input type="number" inputmode="decimal" min="0" step="0.5" data-qf="asbestosM2" value="${esc(c.asbestosM2 || '')}" placeholder="0"><span>㎡</span></label>` : ''}</div>
+        <div class="mod ${c.noHeavy ? 'on' : ''}"><button type="button" class="mod-t" data-mod="noHeavy"><span class="sw-t"></span>手壊し（重機が入れない）</button></div>
+        <div class="mod ${c.narrowRoad ? 'on' : ''}"><button type="button" class="mod-t" data-mod="narrowRoad"><span class="sw-t"></span>狭小道路（小運搬・ガードマン）</button></div>
+      </div>`;
+    qeFoot();
+  }
+  function qeFoot() {
+    const c = cur(), s = state.settings;
+    if (!num(c.floorArea)) { $('#qeSum').innerHTML = '<span class="mut">延床面積を入れると、見積と原価がここに出ます</span>'; return; }
+    const e = calcEstimate(c, s), r = calcCost(c, s), p = e.net - r.cost, mg = e.net ? p / e.net * 100 : 0;
+    const cls = mg >= r.target ? 'good' : mg >= r.target - 10 ? 'mid' : 'bad';
+    $('#qeSum').innerHTML = `<div><span>見積（税抜）</span><b>¥${yen(e.net)}</b></div><div><span>原価</span><b>¥${yen(r.cost)}</b></div><div class="${cls}"><span>粗利</span><b>${mg.toFixed(1)}%</b></div>`;
+    const a = $('#qeArea'); if (a) { const t = num(c.floorArea) * 0.3025; a.textContent = `${Math.round(t * 10) / 10}坪（${num(c.floorArea)}㎡）`; }
+  }
+  $('#qeSheet').addEventListener('click', (e) => {
+    if (e.target.id === 'qeSheet' || e.target.closest('[data-close]')) { closeQE(); return; }
+    const c = cur(); let b;
+    const g = (k) => e.target.closest(`[data-${k}]`);
+    const mOf = (el) => (c.machines || []).find((m) => m.id === el.closest('[data-mid]')?.dataset.mid);
+    const step = (el, v, min) => Math.max(num(el.dataset.min ?? min ?? 0), v + num(el.getAttribute(`data-${Object.keys(el.dataset).find((x) => x !== 'min')}`)));
+    if ((b = g('qstruct'))) c.structure = b.dataset.qstruct;
+    else if ((b = g('quse'))) c.use = b.dataset.quse;
+    else if ((b = g('qfloors'))) c.floors = step(b, num(c.floors) || 1, 1);
+    else if ((b = g('msize'))) { const m = mOf(b); if (m) m.size = b.dataset.msize; }
+    else if ((b = g('mattach'))) { const m = mOf(b); if (m) m.attach = b.dataset.mattach; }
+    else if ((b = g('mcount'))) { const m = mOf(b); if (m) m.count = step(b, num(m.count), 1); }
+    else if ((b = g('mops'))) { const m = mOf(b); if (m) m.ops = step(b, num(m.ops), 0); }
+    else if ((b = g('mdel'))) c.machines = (c.machines || []).filter((m) => m.id !== b.dataset.mdel);
+    else if (g('madd')) { const last = (c.machines || []).slice(-1)[0]; c.machines = (c.machines || []).concat({ id: uid(), size: last ? last.size : '0.25', attach: 'bucket', count: 1, ops: 1 }); }
+    else if ((b = g('qhand'))) { c.crew = c.crew || {}; const now = c.crew.hand === undefined || c.crew.hand === '' ? handAutoOf(c, state.settings) : num(c.crew.hand); c.crew.hand = step(b, now, 0); }
+    else if ((b = g('qgas'))) { c.crew = c.crew || {}; c.crew.gas = step(b, num(c.crew.gas), 0); }
+    else if ((b = g('qdays'))) c.workDays = step(b, planOf(c).days, 1);
+    else if (g('qdaysauto')) c.workDays = '';
+    else if ((b = g('qasb'))) c.asbestos = b.dataset.qasb;
+    else if ((b = g('mod'))) {
+      const k = b.dataset.mod; c.qeOn = c.qeOn || {};
+      if (k === 'asb') c.asbestos = c.asbestos === 'level3' || c.asbestos === 'level12' ? 'none' : 'level3';
+      else if (k === 'noHeavy' || k === 'narrowRoad') c[k] = !c[k];
+      else { c.qeOn[k] = !c.qeOn[k]; if (!c.qeOn[k]) c[k] = 0; }
+    } else return;
+    save(); fillForm(caseForm, c); renderQE();
+  });
+  $('#qeSheet').addEventListener('input', (e) => {
+    const f = e.target.dataset.qf; if (!f) return; const c = cur();
+    if (f === 'tsubo') { c.floorArea = String(Math.round(num(e.target.value) / 0.3025 * 100) / 100); const fa = $('#qeSheet [data-qf=floorArea]'); if (fa) fa.value = c.floorArea; }
+    else if (f === 'floorArea') { c.floorArea = e.target.value; const rg = $('#qeSheet [data-qf=tsubo]'); if (rg) rg.value = Math.round(num(c.floorArea) * 0.3025); }
+    else c[f] = e.target.value;
+    save(); fillForm(caseForm, c); qeFoot();
+  });
+  $('#qeDone').addEventListener('click', () => { closeQE(); go('estimate'); });
+  $('#qeOpen').addEventListener('click', openQE);
+
+  // 設定：重機の単価（機種ごと）
+  function renderMRates() {
+    const s = state.settings, box = $('#mRates'); if (!box) return;
+    box.innerHTML = `<div class="sec-label">重機（1台あたり・機種ごと）</div>
+      <table class="cost mini"><thead><tr><th>機種</th><th class="num">損料・燃料（円/日）</th><th class="num">回送（円/片道）</th></tr></thead><tbody>
+      ${M_SIZES.map((z) => `<tr><td>${z}㎥</td><td class="num"><input type="number" min="0" data-mr="mDaily:${z}" value="${esc((s.mDaily || {})[z] ?? '')}"></td><td class="num"><input type="number" min="0" data-mr="mMove:${z}" value="${esc((s.mMove || {})[z] ?? '')}"></td></tr>`).join('')}</tbody></table>
+      <div class="sec-label">アタッチメント（円/日・追加）</div>
+      <div class="disp-grid">${Object.entries(ATTACH).map(([k, l]) => `<label>${l}<input type="number" min="0" data-mr="mAttach:${k}" value="${esc((s.mAttach || {})[k] ?? '')}"></label>`).join('')}</div>`;
+  }
+  $('#mRates').addEventListener('input', (e) => {
+    const k = e.target.dataset.mr; if (!k) return; const [grp, key] = k.split(':');
+    state.settings[grp] = { ...(state.settings[grp] || {}), [key]: e.target.value }; save(); renderAllKeep();
+  });
+  renderMRates();
   // ---------- 少ない選択肢は「押すだけ」のボタンにする ----------
   const CHOICE_SELECTS = ['#caseForm select[name=structure]', '#caseForm select[name=asbestos]', '#expCat'];
   function syncChoices() {

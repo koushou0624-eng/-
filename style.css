@@ -810,3 +810,61 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
 .mrow .pbar { height: 10px; }
 .mon-break { gap: 4px 12px; }
 .mr-total { margin-left: auto; color: var(--ink); }
+
+/* ===== かんたん見積もり入力・提案単価 ===== */
+.qe-sheet .field { border-top: 1px solid var(--line); padding-top: 12px; }
+.qe-sheet .field:first-child { border-top: 0; padding-top: 0; }
+.qe-lab { font-size: 14px; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
+.qe-lab small { font-weight: 400; margin-left: 4px; }
+.qe-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.qe-area { color: var(--ink); font-size: 16px; margin-left: 6px; }
+.qe-range { width: 100%; min-height: 0; padding: 0; margin: 4px 0 10px; border: 0; accent-color: var(--brand); background: none; box-shadow: none; }
+.qe-unit { display: flex; align-items: center; gap: 8px; margin: 0; }
+.qe-unit input { margin: 0; flex: 1; min-width: 0; font-weight: 700; text-align: right; }
+.qe-unit span { font-weight: 700; color: var(--muted); min-width: 24px; }
+.stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
+.stepper button { width: 48px; height: 48px; border: 0; background: var(--soft); font-size: 22px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.stepper b { min-width: 70px; text-align: center; font-size: 20px; font-variant-numeric: tabular-nums; }
+.stepper b small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.mrow-q { border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px 14px; margin: 0 0 10px; background: var(--panel); }
+.mq-top { display: flex; justify-content: space-between; align-items: center; }
+.small-x { width: 32px; height: 32px; }
+.small-x::before, .small-x::after { left: 9px; right: 9px; top: 15px; }
+.mod { border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 12px; margin: 0 0 8px; background: var(--panel); display: grid; gap: 8px; }
+.mod.on { border-color: var(--brand); }
+.mod .qe-unit { padding-bottom: 6px; }
+.mod .choice { padding-bottom: 2px; }
+.mod-t { display: flex; align-items: center; gap: 12px; border: 0; background: none; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); min-height: 44px; padding: 0; cursor: pointer; text-align: left; }
+.sw-t { width: 44px; height: 26px; border-radius: 13px; background: var(--soft); border: 1.5px solid var(--line); position: relative; flex: none; }
+.sw-t::after { content: ""; position: absolute; left: 2px; top: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+.mod.on .sw-t { background: var(--brand); border-color: var(--brand); }
+.mod.on .sw-t::after { left: 20px; }
+.qe-foot { display: grid; gap: 8px; }
+.qe-sum { display: grid; grid-template-columns: 1.2fr 1.1fr .8fr; gap: 6px; }
+.qe-sum > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; display: grid; min-width: 0; }
+.qe-sum span { font-size: 11px; color: var(--muted); }
+.qe-sum b { font-size: 17px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.qe-sum .good b { color: var(--ok); } .qe-sum .mid b { color: var(--warn); } .qe-sum .bad b { color: var(--bad); }
+.est-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.est-sum > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; min-width: 0; }
+.est-sum span { font-size: 12px; color: var(--muted); }
+.est-sum b { font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.est-sum b small { font-size: 12px; font-weight: 400; }
+.est-sum.good > div:last-child b { color: var(--ok); } .est-sum.mid > div:last-child b { color: var(--warn); } .est-sum.bad > div:last-child b { color: var(--bad); }
+.adj-list { list-style: none; margin: 0; padding: 0; }
+.adj-list li { display: grid; grid-template-columns: 1fr 150px; gap: 4px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.adj-list li:first-child { border-top: 0; }
+.adj-name { font-size: 14px; font-weight: 700; display: grid; gap: 2px; min-width: 0; }
+.adj-name small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.adj-in { display: flex; align-items: center; gap: 4px; margin: 0; }
+.adj-in input { margin: 0; text-align: right; font-weight: 700; min-height: 42px; }
+.adj-list .link { grid-column: 2; justify-self: end; font-size: 12px; }
+.adj-hist ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+.est-empty { border-left: 5px solid var(--go); }
+.mrates input { min-height: 38px; margin: 0; text-align: right; }
+#tab-estimate .toolbar .btn.go { order: -1; }
+@media (max-width: 600px) { .est-sum b { font-size: 15px; } }
+.qe-sum b, .est-sum b { white-space: nowrap; font-size: clamp(13px, 3.9vw, 18px); overflow-wrap: normal; }
+.est-sum b small { display: block; font-size: 12px; }
+.qe-sum > div, .est-sum > div { padding: 6px 8px; }
+.qe-sum { grid-template-columns: 1fr 1fr .7fr; }
