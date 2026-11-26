@@ -142,11 +142,11 @@
     const has = (k) => adj[k] !== undefined && adj[k] !== null && adj[k] !== '';
     const add = (key, name, qty, u, auto, note = '') => {
       const price = has(key) ? num(adj[key]) : auto;
-      if (qty > 0 && (auto > 0 || has(key)) && price >= 0) lines.push({ key, name, qty, u, price, auto, adjusted: has(key), amount: qty * price, note });
+      if (qty > 0 && (auto > 0 || has(key)) && price >= 0) lines.push({ key, name, qty, u, price, auto, adjusted: has(key), amount: Math.round(qty * price), note });
     };
     add('body', `建物本体解体工事（${STRUCT[c.structure]}・${c.floors || '-'}階建）`, +tsubo.toFixed(2), '坪', unit, `延床 ${area}㎡${num(c.height) ? `・高さ ${c.height}m` : ''}`);
     add('scaffold', '仮設工事（養生シート・足場）', area, '㎡', num(s.pScaffold));
-    const base = tsubo * unit;
+    const base = tsubo * (has('body') ? num(adj.body) : unit); // 割増は本体（提案単価を変えたらそれ）に対して
     if (c.noHeavy) add('manual', '手壊し作業割増', 1, '式', base * num(s.pManual) / 100, `本体の${s.pManual}%`);
     if (c.narrowRoad) add('narrow', '小運搬・狭小道路割増', 1, '式', base * num(s.pNarrow) / 100, `本体の${s.pNarrow}%`);
     add('debris', '残置物撤去・処分', num(c.debrisM3), '㎥', num(s.pDebris));
@@ -157,8 +157,7 @@
     if (c.asbestos === 'level12') add('asb12', 'アスベスト 除去（レベル1・2）', num(c.asbestosM2), '㎡', num(s.pAsb12));
     const sub = lines.reduce((a, l) => a + l.amount, 0);
     add('overhead', '諸経費（届出代行・近隣対応・現場管理）', sub > 0 ? 1 : 0, '式', sub * num(s.pOverhead) / 100);
-    const overhead = 0;
-    const net = Math.round(sub + overhead);
+    const net = Math.round(lines.reduce((a, l) => a + l.amount, 0)); // 諸経費も含めた合計
     const tax = Math.floor(net * 0.1);
     return { lines, net, tax, total: net + tax, tsubo };
   }
@@ -1641,10 +1640,10 @@
   function setAdj(key, val) {
     const c = cur(), e = calcEstimate(c, state.settings), line = e.lines.find((l) => l.key === key) || { name: key };
     c.estAdj = c.estAdj || {}; const before = c.estAdj[key] === undefined || c.estAdj[key] === '' ? null : num(c.estAdj[key]);
-    const after = val === '' || val == null ? null : num(val);
+    const after = val === '' || val == null ? null : Math.max(0, num(val));
     if (before === after) return;
     if (after == null) delete c.estAdj[key]; else c.estAdj[key] = after;
-    c.estHistory = (c.estHistory || []).concat({ at: new Date().toISOString(), key, name: line.name.replace(/（.*$/, ''), from: before, to: after }).slice(-50);
+    c.estHistory = (c.estHistory || []).concat({ id: uid(), at: new Date().toISOString(), key, name: line.name.replace(/（.*$/, ''), from: before, to: after }).slice(-50);
     save(); renderAll();
   }
   $('#estPanel').addEventListener('change', (e) => { const k = e.target.dataset.adj; if (k) setAdj(k, e.target.value.trim()); });
@@ -1666,7 +1665,7 @@
       [T('工期', 6), T(`${fmtIso(c.startDate) || '別途協議'} 〜 ${fmtIso(c.endDate) || ''}`, 3), null, T(s.tel ? `TEL ${s.tel}` : '', 0)],
       [T('有効期限', 6), T(d(valid), 3)], [],
       [T('項目', 2), T('数量', 2), T('単位', 2), T('単価', 2), T('金額', 2)],
-      ...e.lines.map((l) => [T(l.name + (l.note ? `（${l.note}）` : ''), 3), T(l.u === '式' ? 1 : l.qty, 4), T(l.u, 3), T(l.u === '式' ? '' : Math.round(l.price), 4), T(Math.round(l.amount), 4)]),
+      ...e.lines.map((l) => [T(l.name + (l.note ? `（${l.note}）` : ''), 3), T(l.u === '式' ? 1 : l.qty, 11), T(l.u, 3), T(l.u === '式' ? '' : Math.round(l.price), 4), T(Math.round(l.amount), 4)]),
       [T('', 3), T('', 3), T('', 3), T('小計（税抜）', 6), T(e.net, 5)],
       [T('', 3), T('', 3), T('', 3), T('消費税（10%）', 6), T(e.tax, 5)],
       [T('', 3), T('', 3), T('', 3), T('合計（税込）', 6), T(e.total, 5)], [],
@@ -1677,7 +1676,7 @@
       ...String(c.notes || '').split('\n').filter(Boolean).map((x) => [T('・' + x, 7)]),
     ];
     const n = rows.length;
-    const merges = ['A1:E1', 'B7:C7', 'B8:C8', 'B9:C9', 'B10:C10', 'D7:E7', 'D8:E8', 'D9:E9'];
+    const merges = ['A1:E1', 'B5:D5', 'B7:C7', 'B8:C8', 'B9:C9', 'B10:C10', 'D7:E7', 'D8:E8', 'D9:E9'];
     for (let i = n - 4 - String(c.notes || '').split('\n').filter(Boolean).length; i <= n; i++) merges.push(`A${i}:E${i}`);
     const cost = [
       [T('原価の内訳（社内用）', 1)], [],
@@ -1776,7 +1775,7 @@
     else if ((b = g('qasb'))) c.asbestos = b.dataset.qasb;
     else if ((b = g('mod'))) {
       const k = b.dataset.mod; c.qeOn = c.qeOn || {};
-      if (k === 'asb') c.asbestos = c.asbestos === 'level3' || c.asbestos === 'level12' ? 'none' : 'level3';
+      if (k === 'asb') { const onA = c.asbestos === 'level3' || c.asbestos === 'level12'; if (!onA) c.asbPrev = c.asbestos || 'none'; c.asbestos = onA ? (c.asbPrev || 'none') : 'level3'; }
       else if (k === 'noHeavy' || k === 'narrowRoad') c[k] = !c[k];
       else { c.qeOn[k] = !c.qeOn[k]; if (!c.qeOn[k]) c[k] = 0; }
     } else return;

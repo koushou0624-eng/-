@@ -1,7 +1,7 @@
 // カイタイ事務：Excel（.xlsx）を作る小さな部品（外部のライブラリなし）
 // KJXlsx.build([{ name, cols:[幅…], rows:[[セル…]…], merges:['A1:E1'] }]) → Blob
 // セル：null／数値／文字列／{ v: 値, s: 書式番号 }
-// 書式番号：0 標準 1 大きい太字 2 表の見出し 3 枠つき文字 4 枠つき金額 5 枠つき太字金額 6 枠つき太字文字 7 小さい灰色 8 太字 9 金額（枠なし）10 太字金額（枠なし）
+// 書式番号：0 標準 1 大きい太字 2 表の見出し 3 枠つき文字 4 枠つき金額 5 枠つき太字金額 6 枠つき太字文字 7 小さい灰色 8 太字 9 金額（枠なし）10 太字金額（枠なし）11 枠つき数量（小数そのまま）
 (function () {
   'use strict';
   const enc = new TextEncoder();
@@ -58,7 +58,7 @@
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEEF1F5"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="11">
+<cellXfs count="12">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
 <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
@@ -70,6 +70,7 @@
 <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="3" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyAlignment="1"><alignment horizontal="left"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
