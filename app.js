@@ -1689,6 +1689,7 @@
     ];
     return KJXlsx.build([{ name: '御見積書', cols: [44, 10, 8, 14, 16], rows, merges: merges.filter((m, i, a) => a.indexOf(m) === i), heights: { 0: 32 } }, { name: '原価（社内用）', cols: [34, 52, 16], rows: cost, merges: ['A1:C1'], heights: { 0: 32 } }]);
   }
+  if (!window.KJXlsx) $('#xlsxBtn').hidden = true;
   $('#xlsxBtn').addEventListener('click', () => {
     if (!window.KJXlsx) { toast('この画面ではExcelを作れません'); return; }
     const c = cur(); if (!num(c.floorArea)) { toast('先に延床面積を入れてください'); return; }

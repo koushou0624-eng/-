@@ -878,14 +878,436 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
 
 </style>
 
-<!-- オープニング動画 -->
-<div id="intro" class="intro no-print" hidden>
-  <video data-src="intro/yard.mp4" class="wide" muted playsinline webkit-playsinline preload="auto"></video>
-  <video data-src="intro/logo.mp4" class="fit" muted playsinline webkit-playsinline preload="metadata"></video>
-  <button type="button" class="intro-tap" hidden aria-label="再生"><span></span></button>
-  <button type="button" class="intro-sound" aria-label="音を出す"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="w" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/><path class="m" d="M16 9l6 6M22 9l-6 6"/></svg></button>
-  <button type="button" class="intro-skip">スキップ<span aria-hidden="true">›</span></button>
+
+<header class="topbar no-print">
+  <div class="brand">カイタイ事務 <span class="tag">試作版</span> <span id="syncStatus" class="sync" hidden></span></div>
+  <div class="case-switch">
+    <label class="case-pick" for="caseSelect"><span>現場</span><select id="caseSelect" aria-label="現場を選ぶ"></select></label>
+    <button id="newCase" class="btn small" title="新しい現場を作る">＋ 新しい現場</button>
+  </div>
+</header>
+
+<nav class="mainnav no-print" id="mainNav" aria-label="メニュー">
+  <button data-sec="home"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg></span><span>ホーム</span></button>
+  <button data-sec="line"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span><span>LINEの記録</span></button>
+  <button data-sec="settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span><span>設定</span></button>
+</nav>
+<nav class="tabs no-print" id="tabs">
+  <button data-tab="home">ホーム</button>
+  <button data-tab="linelog">LINEの記録</button>
+  <button data-tab="summary">まとめ</button>
+  <button data-tab="monthly">月ごとのお金</button>
+  <button data-tab="input" class="active">① 案件入力</button>
+  <button data-tab="schedule">② 期限・チェック</button>
+  <button data-tab="estimate">③ 見積書</button>
+  <button data-tab="profit">💰 利益チェック</button>
+  <button data-tab="process">📅 工程表</button>
+  <button data-tab="manifest">🚛 マニフェスト</button>
+  <button data-tab="expense">⛽ 経費</button>
+  <button data-tab="lease">🚜 リース</button>
+  <button data-tab="recycle">④ リサイクル法 届出下書き</button>
+  <button data-tab="greeting">⑤ 近隣挨拶文</button>
+  <button data-tab="certificate">⑥ 取毀証明書</button>
+  <button data-tab="settings">⚙ 会社・単価設定</button>
+</nav>
+
+<div id="loginOverlay" class="login" hidden>
+  <form id="loginForm" class="login-card">
+    <div class="login-hero">
+      <div class="login-logo"><img src="icons/icon-192.png" alt="" width="56" height="56"></div>
+      <h1>カイタイ事務</h1>
+      <p class="tagline">解体の事務を、スマホひとつで。</p>
+      <ul class="points">
+        <li><b>LINEで送るだけ</b>で処分を記録</li>
+        <li>見積書・届出・挨拶文が<b>自動でPDF</b></li>
+        <li>現場ごとの<b>利益と処分代</b>がすぐ分かる</li>
+      </ul>
+    </div>
+    <p class="hint"><b id="loginTitle">ログイン</b>：メールアドレスとパスワードを入れてください。</p>
+    <p id="inviteNote" class="invite-note" hidden>会社への招待を受け取りました。登録（またはログイン）すると、その会社に参加します。</p>
+    <label for="loginEmail">メールアドレス<input id="loginEmail" type="email" autocomplete="username" required></label>
+    <label for="loginPassword">パスワード（8文字以上）<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+    <label id="loginPassword2Row" for="loginPassword2" hidden>パスワード（確認のためもう一度）<input id="loginPassword2" type="password" autocomplete="new-password"></label>
+    <button id="loginSubmit" class="btn" type="submit">ログイン</button>
+    <p id="loginError" class="login-error" role="alert"></p>
+    <button type="button" id="loginToggle" class="link">はじめての方はこちら（新規登録）</button>
+  </form>
 </div>
+
+<div id="companyOverlay" class="login" hidden>
+  <div class="login-card">
+    <h1>会社の設定</h1>
+    <p class="hint">はじめに、会社を作るか、招待された会社に参加してください。</p>
+    <form id="companyCreate">
+      <label for="companyName">会社を作る（あなたが代表になります）<input id="companyName" placeholder="例：〇〇解体株式会社" maxlength="100"></label>
+      <button class="btn" type="submit">会社を作る</button>
+    </form>
+    <hr>
+    <form id="companyJoin">
+      <label for="joinCode">招待リンクで参加する（代表の人から届いたリンクを貼り付け）<input id="joinCode" placeholder="https://…?invite=…"></label>
+      <button class="btn ghost" type="submit">参加する</button>
+    </form>
+    <p id="companyError" class="login-error" role="alert"></p>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<!-- 捨てた記録（押すだけで入力） -->
+<div id="recSheet" class="sheet-back" hidden>
+  <form id="recForm" class="sheet rec" role="dialog" aria-label="捨てた記録" novalidate>
+    <div class="sheet-head"><div class="sheet-title">捨てた記録</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="recBody"></div>
+    <div class="sheet-foot"><div id="recPreview" class="rec-preview"></div><button class="btn go big" type="submit" id="recSubmit">記録する</button></div>
+  </form>
+  <div id="recDone" class="sheet done-sheet" hidden>
+    <div class="done-mark"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg></div>
+    <div class="done-title">記録しました</div>
+    <p id="recDoneText" class="done-text"></p>
+    <div class="done-btns"><button type="button" class="btn go big" id="recAgain">続けて記録する</button><button type="button" class="btn ghost big" data-close>閉じる</button></div>
+  </div>
+</div>
+<!-- 経費をつける -->
+<div id="expSheet" class="sheet-back" hidden>
+  <div class="sheet" role="dialog" aria-label="経費をつける">
+    <div class="sheet-head"><div class="sheet-title">経費をつける</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <form id="expenseForm" class="expform2" novalidate>
+      <div class="field"><div class="flabel"><i>1</i>なにに使った？</div><select id="expCat"></select></div>
+      <div class="field"><div class="flabel"><i>2</i>いくら？</div>
+        <div class="qty-row yen"><span class="yen-mark">¥</span><input id="expAmount" class="qty-in" type="number" min="0" inputmode="numeric" placeholder="0" aria-label="金額"></div></div>
+      <div class="field"><div class="flabel"><i>3</i>いつ？</div><div class="choice" id="expDay"><button type="button" class="cbtn on" data-d="0">今日</button><button type="button" class="cbtn" data-d="-1">昨日</button><label class="cbtn date">日付を選ぶ<input id="expDate" type="date"></label></div></div>
+      <div class="field"><div class="flabel"><i>4</i>メモ（なくてもOK）</div><input id="expMemo" placeholder="例 養生シート5枚、首都高 往復"></div>
+      <button class="btn go big" type="submit" id="expSubmit">記録する</button>
+    </form>
+  </div>
+</div>
+<!-- ゴミの種類と単価 -->
+<div id="typeSheet" class="sheet-back" hidden>
+  <div class="sheet" role="dialog" aria-label="ゴミの種類と単価">
+    <div class="sheet-head"><div class="sheet-title">ゴミの種類と単価</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="typeSheetBody"></div>
+  </div>
+</div>
+<!-- かんたん見積もり入力 -->
+<div id="qeSheet" class="sheet-back" hidden>
+  <div class="sheet qe-sheet" role="dialog" aria-label="かんたん見積もり入力">
+    <div class="sheet-head"><div class="sheet-title">かんたん見積もり入力</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="qeBody"></div>
+    <div class="sheet-foot qe-foot"><div id="qeSum" class="qe-sum"></div><button type="button" class="btn go big" id="qeDone">見積書を見る</button></div>
+  </div>
+</div>
+<!-- 現場の情報を直す（区切りごと） -->
+<div id="infoSheet" class="sheet-back" hidden>
+  <div class="sheet info-sheet" role="dialog" aria-label="現場の情報">
+    <div class="sheet-head"><div><div class="sheet-step" id="infoStep"></div><div class="sheet-title" id="infoTitle"></div></div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <div id="infoBody"></div>
+    <div class="sheet-foot info-foot"><button type="button" class="btn ghost" id="infoPrev">‹ 前へ</button><button type="button" class="btn go" id="infoNext">次へ ›</button></div>
+  </div>
+</div>
+<!-- 新しい現場（最低限だけ） -->
+<div id="caseSheet" class="sheet-back" hidden>
+  <form id="caseQuick" class="sheet" role="dialog" aria-label="新しい現場" novalidate>
+    <div class="sheet-head"><div class="sheet-title">新しい現場</div><button type="button" class="x" data-close aria-label="閉じる"></button></div>
+    <p class="hint">ここだけ入れれば始められます。ほかの情報は、あとから「情報」でいつでも入れられます。</p>
+    <label>施主のお名前<span class="suffix-wrap"><input id="cqName" autocomplete="off" placeholder="例 山田"><span class="suffix">様邸</span></span></label>
+    <label>現場の住所<input id="cqAddr" autocomplete="off" placeholder="例 大阪市住吉区〇〇1-2-3"></label>
+    <div class="field"><div class="flabel">構造</div><div class="choice" id="cqStruct">
+      <button type="button" data-v="wood" class="on">木造</button><button type="button" data-v="steel">鉄骨造</button><button type="button" data-v="rc">RC造</button><button type="button" data-v="src">SRC造</button></div></div>
+    <label>延床面積（㎡）<input id="cqArea" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 99"><span class="sub">坪で分かるときは 坪×3.3 です（30坪 ≒ 99㎡）</span></label>
+    <div class="two-col"><label>着工日<input id="cqStart" type="date"></label><label>完了予定<input id="cqEnd" type="date"></label></div>
+    <button class="btn go big" type="submit">この現場を作る</button>
+  </form>
+</div>
+<main>
+  <div id="siteHead" class="sitehead no-print" hidden></div>
+  <!-- ① 案件入力 -->
+  <section id="tab-input" class="tab active no-print">
+    <p class="disclaimer">見本の案件が3件入っています（上の選択欄で切替）。数字を書き換えると、②〜⑥の書類がすぐ変わります。入力内容はこの端末にだけ保存されます。単価は相場の目安なので、⚙設定で自社の値に変えてください。</p>
+    <p class="hint">ここに入力するだけで、ほかのタブの書類が全部自動で作られます（入力内容はこの端末のブラウザに自動保存）。</p>
+    <form id="caseForm" class="grid">
+      <fieldset data-part="client">
+        <legend>施主（発注者）</legend>
+        <label>氏名・社名<input name="clientName" placeholder="山田 太郎"></label>
+        <label>住所<input name="clientAddress" placeholder="東京都〇〇区〇〇1-2-3"></label>
+        <label>電話<input name="clientTel" type="tel" inputmode="tel" placeholder="090-0000-0000"></label>
+      </fieldset>
+      <fieldset data-part="building">
+        <legend>解体する建物</legend>
+        <label>工事場所（所在地）<input name="siteAddress" placeholder="東京都〇〇区〇〇4-5-6"></label>
+        <label>構造
+          <select name="structure">
+            <option value="wood">木造</option>
+            <option value="steel">鉄骨造</option>
+            <option value="rc">RC造（鉄筋コンクリート）</option>
+            <option value="src">SRC造（鉄骨鉄筋コンクリート）</option>
+          </select>
+        </label>
+        <label>階数<input name="floors" type="number" inputmode="decimal" min="1" value="2"></label>
+        <label>延床面積（㎡）<input name="floorArea" type="number" inputmode="decimal" min="0" step="0.01" placeholder="99.17"></label>
+        <label>用途<input name="use" value="専用住宅"></label>
+        <label>築年（任意）<input name="builtYear" inputmode="numeric" placeholder="1985"></label>
+      </fieldset>
+      <fieldset data-part="site">
+        <legend>現場条件</legend>
+        <label class="check toggle"><input type="checkbox" name="noHeavy"><span>重機が入れない<small>手壊しが中心になる</small></span></label>
+        <label class="check toggle"><input type="checkbox" name="narrowRoad"><span>前面道路が狭い<small>小型車で搬出・道路使用許可が必要なことも</small></span></label>
+        <label>残置物（㎥）<input name="debrisM3" type="number" inputmode="decimal" min="0" step="0.5" value="0"></label>
+        <label>ブロック塀（m）<input name="blockM" type="number" inputmode="decimal" min="0" step="0.5" value="0"></label>
+        <label>土間コンクリート（㎡）<input name="concreteM2" type="number" inputmode="decimal" min="0" step="0.5" value="0"></label>
+        <label>庭木（本）<input name="trees" type="number" inputmode="decimal" min="0" value="0"></label>
+      </fieldset>
+      <fieldset data-part="asbestos">
+        <legend>アスベスト</legend>
+        <label>事前調査の結果
+          <select name="asbestos">
+            <option value="none">含有なし</option>
+            <option value="level3">あり（レベル3：成形板など）</option>
+            <option value="level12">あり（レベル1・2：吹付け・保温材など）</option>
+            <option value="unknown">未調査</option>
+          </select>
+        </label>
+        <label>除去する面積（㎡）<input name="asbestosM2" type="number" inputmode="decimal" min="0" step="0.5" value="0"></label>
+      </fieldset>
+      <fieldset data-part="period">
+        <legend>工期</legend>
+        <label>着工予定日<input name="startDate" type="date"></label>
+        <label>完了予定日<input name="endDate" type="date"></label>
+        <label>作業日数（空欄なら自動計算）<input name="workDays" type="number" inputmode="decimal" min="1" placeholder="自動"></label>
+        <label>見積番号<input name="estimateNo" placeholder="自動"></label>
+      </fieldset>
+      <fieldset data-part="waste">
+        <legend>廃棄物の量の見込み（届出用・トン）</legend>
+        <label>コンクリート塊<input name="wConcrete" type="number" inputmode="decimal" min="0" step="0.1" value="0"></label>
+        <label>木材<input name="wWood" type="number" inputmode="decimal" min="0" step="0.1" value="0"></label>
+        <label>アスファルト・コンクリート塊<input name="wAsphalt" type="number" inputmode="decimal" min="0" step="0.1" value="0"></label>
+        <label>混合廃棄物（届出対象外・原価計算用）<input name="wMixed" type="number" inputmode="decimal" min="0" step="0.1" value="0"></label>
+        <button type="button" id="autoWaste" class="btn ghost">目安を自動入力</button>
+      </fieldset>
+      <fieldset data-part="notes" class="wide">
+        <legend>メモ（見積書の備考に表示）</legend>
+        <textarea name="notes" rows="3" placeholder="例：地中埋設物が出た場合は別途お見積りとなります。"></textarea>
+      </fieldset>
+    </form>
+    <div class="danger-zone"><button id="deleteCase" class="btn ghost">この現場を削除する</button></div>
+  </section>
+
+  <!-- ② 期限 -->
+  <section id="tab-schedule" class="tab no-print">
+    <div id="scheduleOut"></div>
+  </section>
+
+  <!-- 書類系 -->
+  <section id="tab-estimate" class="tab doc-tab"><div class="toolbar no-print"><button type="button" class="btn go" id="qeOpen">かんたん見積もり入力</button><button class="btn pdf" data-doc="見積書">PDFで保存・送る</button><button type="button" class="btn ghost" id="xlsxBtn">Excelで保存</button><button class="btn ghost print">印刷</button><span class="pdf-msg hint" role="status"></span></div><div id="estPanel" class="no-print"></div><div class="paper" id="estimateOut"></div></section>
+  <section id="tab-home" class="tab no-print"><div id="homeOut"></div></section>
+  <section id="tab-summary" class="tab no-print"><div id="summaryOut"></div></section>
+  <section id="tab-monthly" class="tab no-print"><div id="monthlyOut"></div></section>
+  <section id="tab-linelog" class="tab no-print"><div id="lineLogOut"></div></section>
+  <section id="tab-profit" class="tab no-print"><div id="profitOut"></div></section>
+  <section id="tab-process" class="tab doc-tab"><div class="toolbar no-print"><span class="hint" style="margin:0">印刷・PDF保存はパソコン版（index.html）で使えます</span><span class="warn">※ 建設リサイクル法の届出に添付する工程表や、施主への説明に使えます。</span></div><div class="paper" id="processOut"></div></section>
+  <section id="tab-manifest" class="tab no-print">
+    <div id="dispTop"></div>
+    <button type="button" class="btn go big" id="qwOpen">＋ 捨てた記録をつける</button>
+    <div class="sec-row"><p class="sec-label">記録（新しい順）</p><button type="button" class="link small-link" id="typeOpen">ゴミの種類と単価 ›</button></div>
+    <ul id="wasteLog" class="rows"></ul>
+    <div id="manifestAlerts"></div>
+    <details id="manifestDetail" class="card fold">
+      <summary>マニフェストの詳しい入力（交付番号・業者・B2/D/E票の返送日）</summary>
+    <p class="hint">ゴミの種類ごとに分かれています。返送された票の日付を入れると「済」になります。</p>
+    <div id="manifestList"></div>
+    <div class="rare">
+      <label for="rareType">種類を選んで1枚追加（返送日などを細かく入れるとき）</label>
+      <div class="rare-row"><select id="rareType"></select><button class="btn ghost" id="addRare">＋ 追加</button></div>
+    </div>
+    </details>
+    <datalist id="carrierList"></datalist><datalist id="disposerList"></datalist>
+    <details id="wasteStats" class="card fold">
+      <summary>集計・請求・報告書（種類ごとの処分代、処分場ごとの請求、見込みと実績、交付等状況報告書）</summary>
+    <div id="manifestCost"></div>
+    <div id="siteInvoices"></div>
+    <div id="manifestCompare"></div>
+    <div id="manifestReport"></div>
+    </details>
+  </section>
+  <section id="tab-expense" class="tab no-print">
+    <h2>この案件の経費</h2>
+    <p class="hint">消耗品・高速代・燃料費などを、使ったその日に入れておきます。日付と項目は次の入力に引き継がれます。</p>
+    <button type="button" class="btn go big" id="expOpen">＋ 経費をつける</button>
+    <div id="expenseList"></div>
+    <div id="expenseMonthly"></div>
+  </section>
+  <section id="tab-lease" class="tab no-print">
+    <div id="leaseAlerts"></div>
+    <h2>この案件のリース（重機・ダンプ）</h2>
+    <p class="hint">決めた日数までは日割り、その日数を超えると自動で月極料金に切り替えて計算します。返した日が空欄の機械は「借りている途中」として今日までの日数で計算します。</p>
+    <div class="rare">
+      <label for="leasePreset">借りた機械を追加</label>
+      <div class="rare-row"><select id="leasePreset"></select><button class="btn" id="addLease">＋ 追加</button></div>
+    </div>
+    <div id="leaseList"></div>
+    <datalist id="companyList"></datalist>
+    <div id="leaseTotal"></div>
+  </section>
+  <section id="tab-recycle" class="tab doc-tab"><div class="toolbar no-print"><span class="hint" style="margin:0">印刷・PDF保存はパソコン版（index.html）で使えます</span><span class="warn">※ 提出は各自治体の正式様式（様式第一号）で行ってください。転記用の下書きです。</span></div><div class="paper" id="recycleOut"></div></section>
+  <section id="tab-greeting" class="tab doc-tab"><div class="toolbar no-print"><span class="hint" style="margin:0">印刷・PDF保存はパソコン版（index.html）で使えます</span></div><div class="paper" id="greetingOut"></div></section>
+  <section id="tab-certificate" class="tab doc-tab"><div class="toolbar no-print"><span class="hint" style="margin:0">印刷・PDF保存はパソコン版（index.html）で使えます</span><span class="warn">※ 施主が建物滅失登記（解体後1か月以内）に使います。</span></div><div class="paper" id="certificateOut"></div></section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab no-print">
+    <h2 class="set-title">設定</h2>
+    <p class="hint set-hint">見出しを押すと開きます。</p>
+    <fieldset id="companyBox" class="cloudbox" hidden>
+      <legend>会社とメンバー</legend>
+      <label for="companySwitch" class="inline" hidden>会社を切り替え <select id="companySwitch"></select></label>
+      <label for="companyNameEdit">会社名<input id="companyNameEdit" maxlength="100"></label>
+      <button type="button" id="companyRename" class="btn ghost small">会社名を変更</button>
+      <p class="hint" style="margin-top:12px">この会社のデータを見られる人</p>
+      <ul id="memberList" class="members"></ul>
+      <div id="inviteArea">
+        <button type="button" id="inviteMake" class="btn">＋ 招待リンクを作る</button>
+        <div id="inviteUrlRow" class="rare-row" hidden><input id="inviteUrl" readonly><button type="button" id="inviteCopy" class="btn ghost">コピー</button></div>
+      </div>
+      <p id="companyMsg" class="hint" role="status"></p>
+    </fieldset>
+    <fieldset id="cloudBox" class="cloudbox" hidden>
+      <legend>アカウント</legend>
+      <p>ログイン中：<b id="cloudEmail"></b></p>
+      <p class="hint">入力した内容は自動でネットに保存され、ほかの端末でも同じデータが見られます。</p>
+      <button type="button" id="logoutBtn" class="btn ghost">ログアウト</button>
+    </fieldset>
+    <fieldset id="lineInBox" class="cloudbox" hidden>
+      <legend>LINEで入力（運転手さん・社員）</legend>
+      <p class="hint">公式LINEに「ヒラヤマ 住吉区 シバ 3t」のように送ると、その現場のマニフェストに自動で入ります。最初に一度だけ、LINEを会社と連携します。</p>
+      <ol class="steps">
+        <li>公式LINEを友だち追加：<a id="lineAddLink" href="#" target="_blank" rel="noopener"></a></li>
+        <li>下のボタンで出る<b>6桁の連携番号</b>を、30分以内に公式LINEへ送る</li>
+      </ol>
+      <div class="toolbar">
+        <button type="button" id="lineCodeSelf" class="btn">自分のLINEを連携する</button>
+      </div>
+      <div id="lineDriverArea" class="rare-row">
+        <input id="lineDriverName" placeholder="運転手さんの名前（例：田中さん）" maxlength="40">
+        <button type="button" id="lineCodeDriver" class="btn ghost">運転手さん用の連携番号を出す</button>
+      </div>
+      <div id="lineCodeOut" class="codebox" hidden></div>
+      <p class="hint" style="margin-top:12px">連携しているLINE</p>
+      <ul id="lineUserList" class="members"></ul>
+      <p id="lineInMsg" class="hint" role="status"></p>
+    </fieldset>
+    <fieldset id="lineBox" class="cloudbox" hidden>
+      <legend>毎朝のLINE通知</legend>
+      <p class="hint">毎朝7時ごろ、月極が近いリース・マニフェストの期限・届出の期限など、注意があるときだけLINEに届きます。</p>
+      <label for="lineToken">チャネルアクセストークン（LINE Developers の「Messaging API設定」で発行）
+        <input id="lineToken" type="password" autocomplete="off" placeholder="貼り付けてください"></label>
+      <label for="lineUserId">あなたのユーザーID（LINE Developers の「チャネル基本設定」の一番下。U から始まる文字）
+        <input id="lineUserId" autocomplete="off" placeholder="U から始まる33文字"></label>
+      <label class="check"><input type="checkbox" id="lineEnabled" checked> 毎朝の通知を送る</label>
+      <div class="toolbar">
+        <button type="button" id="lineSave" class="btn">保存</button>
+        <button type="button" id="lineTest" class="btn ghost">テスト送信</button>
+      </div>
+      <p id="lineMsg" class="hint" role="status"></p>
+    </fieldset>
+    <form id="settingsForm" class="grid">
+      <fieldset>
+        <legend>自社情報</legend>
+        <label>会社名<input name="name" placeholder="株式会社〇〇解体"></label>
+        <label>代表者<input name="rep" placeholder="代表取締役 〇〇 〇〇"></label>
+        <label>住所<input name="address"></label>
+        <label>電話<input name="tel"></label>
+        <label>許可・登録番号<input name="permit" placeholder="東京都知事 解体工事業登録（〇）第〇〇号"></label>
+        <label>見積有効期限（日）<input name="validDays" type="number" value="30"></label>
+      </fieldset>
+      <fieldset>
+        <legend>単価（税抜）</legend>
+        <label>木造（円/坪）<input name="pWood" type="number"></label>
+        <label>鉄骨造（円/坪）<input name="pSteel" type="number"></label>
+        <label>RC造（円/坪）<input name="pRc" type="number"></label>
+        <label>手壊し割増（％）<input name="pManual" type="number"></label>
+        <label>狭小道路割増（％）<input name="pNarrow" type="number"></label>
+        <label>残置物（円/㎥）<input name="pDebris" type="number"></label>
+        <label>ブロック塀（円/m）<input name="pBlock" type="number"></label>
+        <label>土間コンクリート（円/㎡）<input name="pConcrete" type="number"></label>
+        <label>庭木（円/本）<input name="pTree" type="number"></label>
+        <label>アスベスト レベル3（円/㎡）<input name="pAsb3" type="number"></label>
+        <label>アスベスト レベル1・2（円/㎡）<input name="pAsb12" type="number"></label>
+        <label>養生・足場（円/㎡・延床）<input name="pScaffold" type="number"></label>
+        <label>諸経費（％）<input name="pOverhead" type="number"></label>
+      </fieldset>
+      <fieldset>
+        <legend>マニフェスト</legend>
+        <label>いつもの収集運搬業者<input name="defCarrier" placeholder="〇〇運輸（許可番号 〇〇〇）"></label>
+        <label>いつもの処分業者<input name="defDisposer" placeholder="〇〇リサイクルセンター"></label>
+      </fieldset>
+      <fieldset>
+        <legend>リースの機械（よく借りるもの）</legend>
+        <p class="hint">ここに登録した機械は、リースタブで選ぶだけで単価が入ります。その月（区切り）に使った日数が「超えたら月極」の日数を超えると、その月は月極料金になります。</p>
+        <label>月極の区切り方
+          <select name="leaseMode">
+            <option value="calendar">リース会社の締め日ごと（登録のない会社は末日締め）</option>
+            <option value="anniv">借りた日から1か月ごと</option>
+            <option value="days30">借りた日から30日ごと</option>
+          </select>
+        </label>
+        <div class="always-title">リース会社と締め日</div>
+        <div id="leaseCompanies"></div>
+        <button type="button" class="btn ghost small" id="addCompany">＋ リース会社を追加</button>
+        <div class="always-title" style="margin-top:12px">よく借りる機械</div>
+        <div id="leasePresets"></div>
+        <button type="button" class="btn ghost small" id="addPreset">＋ 機械を追加</button>
+      </fieldset>
+      <fieldset>
+        <legend>ゴミの種類と単価</legend>
+        <div id="typeHome"><div id="typeEditor"></div></div>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>処分場ごとの単価</legend>
+        <p class="hint">処分場によって単価が違う場合はここに登録します。マニフェストの「処分業者」にこの名前を選ぶと、その処分場の単価で処分代を計算し、その処分場の締め日で請求をまとめます（空欄の種類は標準の単価、登録のない処分場は末日締め）。</p>
+        <div id="sites"></div>
+        <button type="button" class="btn ghost small" id="addSite">＋ 処分場を追加</button>
+        <div id="siteCompare"></div>
+      </fieldset>
+      <fieldset>
+        <legend>原価（利益チェック用）</legend>
+        <label>作業員の人工単価（円/人日）<input name="cLabor" type="number"></label>
+        <label>作業員の人数（オペレーター込み・人）<input name="cWorkers" type="number"></label>
+        <label>重機回送費（円/回・片道）<input name="cMove" type="number"></label>
+        <label>重機損料・燃料（円/日）<input name="cMachine" type="number"></label>
+        <label>ダンプ1台の積載量（t）<input name="cTruckLoad" type="number" step="0.5"></label>
+        <label>ダンプ運搬費（円/台）<input name="cTruck" type="number"></label>
+        <label>処分費 残置物（円/㎥）<input name="cDispDebris" type="number"></label>
+        <label>ガードマン（円/人日）<input name="cGuard" type="number"></label>
+        <label>アスベスト除去の外注原価率（％）<input name="cOutsource" type="number"></label>
+        <label>鉄スクラップ買取（円/t）<input name="cScrap" type="number"></label>
+        <label>目標粗利率（％）<input name="targetMargin" type="number"></label>
+        <label>オペレーター（円/人日）<input name="cOperator" type="number"></label>
+        <label>ガス工（円/人日）<input name="cGas" type="number"></label>
+        <label>SRC造の坪単価（円/坪・見積）<input name="pSrc" type="number"></label>
+        <div id="mRates" class="mrates"></div>
+      </fieldset>
+    </form>
+    <fieldset>
+      <legend>オープニング動画</legend>
+      <label class="check"><input type="checkbox" id="introOn"> アプリを開いたときに動画を流す（1日1回）</label>
+      <button type="button" class="btn ghost" id="introPlay">今すぐ見る</button>
+    </fieldset>
+    <fieldset id="trashFs">
+      <legend>消した現場・バックアップ</legend>
+      <div id="trashBox"></div>
+      <div id="backupBox"></div>
+    </fieldset>
+    <fieldset>
+      <legend>スマホのホーム画面に置く（アプリのように使う）</legend>
+      <ol class="steps">
+        <li><b>iPhone</b>：Safariでこのページを開き、下の共有ボタン（□に↑）→「ホーム画面に追加」</li>
+        <li><b>Android</b>：Chromeで開き、右上の︙ →「ホーム画面に追加」</li>
+      </ol>
+      <p class="hint">ホーム画面のアイコンから開くと、アプリと同じように全画面で使えます。</p>
+    </fieldset>
+    <p class="hint">単価は初期値として一般的な相場の目安を入れています。必ず自社の単価に書き換えてください。</p>
+    
+    <div class="danger-zone"><button id="resetAll" class="btn ghost">すべてのデータを消して見本の状態に戻す</button></div>
+  </section>
+</main>
+
 
 <script>
 // カイタイ事務：画面と毎朝の通知（LINE）で共通に使う計算
@@ -3088,6 +3510,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     ];
     return KJXlsx.build([{ name: '御見積書', cols: [44, 10, 8, 14, 16], rows, merges: merges.filter((m, i, a) => a.indexOf(m) === i), heights: { 0: 32 } }, { name: '原価（社内用）', cols: [34, 52, 16], rows: cost, merges: ['A1:C1'], heights: { 0: 32 } }]);
   }
+  if (!window.KJXlsx) $('#xlsxBtn').hidden = true;
   $('#xlsxBtn').addEventListener('click', () => {
     if (!window.KJXlsx) { toast('この画面ではExcelを作れません'); return; }
     const c = cur(); if (!num(c.floorArea)) { toast('先に延床面積を入れてください'); return; }
@@ -3523,7 +3946,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     }
     if ((b = e.target.closest('[data-cdel]'))) {
       if (b.dataset.used) { toast('この種類の記録があるので消せません。チェックを外すと最初の一覧から消えます'); return; }
-      const u = (S.customTypes || []).find((x) => x.id === b.dataset.cdel); if (!u || !confirm(`「${u.name}」を消しますか？`)) return;
+      const u = (S.customTypes || []).find((x) => x.id === b.dataset.cdel); if (!u || !((m) => true)(`「${u.name}」を消しますか？`)) return;
       S.customTypes = S.customTypes.filter((x) => x.id !== u.id); S.alwaysTypes = (S.alwaysTypes || []).filter((x) => x !== u.id);
       const dp = { ...S.dispPrices }; delete dp[u.id]; S.dispPrices = dp; save(); renderAll(); renderSites();
     }
@@ -3558,7 +3981,7 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
     $('#tabs button[data-tab=input]').click();
   });
   $('#deleteCase').addEventListener('click', () => {
-    if (!confirm('この現場を削除しますか？\n（30日間は、設定の「消した現場・バックアップ」から戻せます）')) return;
+    if (!((m) => true)('この現場を削除しますか？\n（30日間は、設定の「消した現場・バックアップ」から戻せます）')) return;
     const gone = state.cases.find((c) => c.id === state.currentId);
     if (gone) trashAdd(gone);
     state.cases = state.cases.filter((c) => c.id !== state.currentId);
@@ -3612,8 +4035,8 @@ button.hero-main { all: unset; display: grid; gap: 2px; cursor: pointer; margin:
         const blob = new Blob([JSON.stringify({ settings: d.settings, cases: d.cases }, null, 2)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kaitai-jimu-backup-${day}.json`; a.click(); return;
       }
-      if (!confirm(`${day.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日')}の3時の状態に戻しますか？\n会社のみんなのデータが、その時の内容に戻ります（今の状態は、念のため先にファイルで書き出します）。`)) return;
-      $('#exportBtn').click();
+      if (!((m) => true)(`${day.replace(/^\d+-0?(\d+)-0?(\d+)$/, '$1月$2日')}の3時の状態に戻しますか？\n会社のみんなのデータが、その時の内容に戻ります（今の状態は、念のため先にファイルで書き出します）。`)) return;
+      
       state = { settings: normalizeSettings({ ...DEFAULT_SETTINGS, ...(d.settings || {}) }), cases: d.cases && d.cases.length ? d.cases : [newCase()], currentId: (d.cases[0] || {}).id };
       save(); fillForm(caseForm, cur()); fillForm(settingsForm, state.settings); renderAll(); toast('バックアップの状態に戻しました');
     }
